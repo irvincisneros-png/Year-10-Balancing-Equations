@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Balance Quest | Year 10 Chemistry</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="game-panel" aria-label="Balancing equations game">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Year 10 chemistry</p>
+            <h1>Balance Quest</h1>
+          </div>
+          <div class="score-strip" aria-label="Progress and score">
+            <div>
+              <span class="metric-label">XP</span>
+              <strong id="xpValue">0</strong>
+            </div>
+            <div>
+              <span class="metric-label">Streak</span>
+              <strong id="streakValue">0</strong>
+            </div>
+            <div>
+              <span class="metric-label">Level</span>
+              <strong id="levelValue">1</strong>
+            </div>
+          </div>
+        </header>
+
+        <section class="mission-band" aria-live="polite">
+          <div class="mission-copy">
+            <span id="missionTag" class="mission-tag">Starter</span>
+            <h2 id="missionTitle">Loading mission...</h2>
+            <p id="missionContext"></p>
+          </div>
+          <div class="lab-visual" aria-hidden="true">
+            <div class="flask flask-left">
+              <span></span>
+            </div>
+            <div class="reaction-bolt">=</div>
+            <div class="flask flask-right">
+              <span></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="equation-card">
+          <div class="equation-toolbar">
+            <div>
+              <p class="section-kicker">Current equation</p>
+              <p id="reactionType" class="reaction-type">Reaction type</p>
+            </div>
+          <div class="toolbar-actions">
+              <button id="shuffleButton" class="text-button" type="button">New random run</button>
+              <button id="hintButton" class="icon-button" type="button" aria-label="Show a hint" title="Show a hint">
+                ?
+              </button>
+              <button id="resetButton" class="icon-button" type="button" aria-label="Reset coefficients" title="Reset">
+                ↺
+              </button>
+            </div>
+          </div>
+
+          <form id="equationForm" class="equation-form" autocomplete="off">
+            <div id="reactants" class="formula-side" aria-label="Reactants"></div>
+            <div class="arrow" aria-hidden="true">→</div>
+            <div id="products" class="formula-side" aria-label="Products"></div>
+          </form>
+
+          <div class="action-row">
+            <button id="checkButton" class="primary-button" type="button">Check balance</button>
+            <button id="nextButton" class="secondary-button" type="button" disabled>Next mission</button>
+          </div>
+        </section>
+
+        <section class="feedback-grid">
+          <article class="feedback-panel">
+            <div class="panel-heading">
+              <h3>Atom scoreboard</h3>
+              <span id="balanceStatus" class="status-pill">Ready</span>
+            </div>
+            <div id="atomTable" class="atom-table"></div>
+          </article>
+
+          <article class="feedback-panel">
+            <div class="panel-heading">
+              <h3>Coach notes</h3>
+              <span id="attemptCount" class="status-pill neutral">0 tries</span>
+            </div>
+            <div id="coachNotes" class="coach-notes">
+              Start with the element that appears in the fewest formulas, then leave oxygen and hydrogen until later.
+            </div>
+          </article>
+        </section>
+      </section>
+
+      <aside class="sidebar" aria-label="Learning and progression">
+        <section class="side-section">
+          <div class="panel-heading">
+            <h2>Mission Map</h2>
+            <span id="completedCount" class="status-pill neutral">0/0</span>
+          </div>
+          <div id="missionList" class="mission-list"></div>
+        </section>
+
+        <section class="side-section compact">
+          <h2>Balancing Rules</h2>
+          <ul class="rule-list">
+            <li>Change coefficients only. Never change subscripts.</li>
+            <li>Count every atom on both sides of the arrow.</li>
+            <li>Use the smallest whole-number ratio.</li>
+            <li>Polyatomic ions can be balanced as a group if they stay together.</li>
+          </ul>
+        </section>
+
+        <section class="side-section compact">
+          <h2>Achievements</h2>
+          <div class="badges">
+            <span id="badgeFirst" class="badge">First balance</span>
+            <span id="badgeStreak" class="badge">3-streak</span>
+            <span id="badgeMaster" class="badge">Quest complete</span>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
