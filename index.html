@@ -1,138 +1,2495 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Balance Quest | Year 10 Chemistry</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="styles.css" />
-  </head>
-  <body>
-    <main class="app-shell">
-      <section class="game-panel" aria-label="Balancing equations game">
-        <header class="topbar">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Chem Quest</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.25.6/babel.min.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; background: #0d0020; }
+  body { -webkit-font-smoothing: antialiased; }
+  #root { min-height: 100vh; }
+  sub, sup { font-size: 0.6em; }
+  * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+  button { font-family: inherit; }
+  #loader {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: #0d0020; color: #3ef0ff; font-family: 'Press Start 2P', monospace;
+    font-size: 14px; z-index: 9999;
+  }
+</style>
+</head>
+<body>
+<div id="loader">LOADING…</div>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// localStorage shim — drop-in replacement for window.storage so the original code is unchanged
+window.storage = {
+  async get(key) {
+    const v = localStorage.getItem(key);
+    if (v === null) throw new Error('Key not found: ' + key);
+    return { key, value: v };
+  },
+  async set(key, value) {
+    localStorage.setItem(key, value);
+    return { key, value };
+  },
+  async delete(key) {
+    localStorage.removeItem(key);
+    return { key, deleted: true };
+  },
+  async list(prefix = '') {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(prefix)) keys.push(k);
+    }
+    return { keys, prefix };
+  },
+};
+
+
+// =================== STYLE TOKENS ===================
+const PALETTE = {
+  bg: '#0d0020',
+  bg2: '#1a0036',
+  panel: '#240048',
+  ink: '#fff8e6',
+  pink: '#ff3ea5',
+  cyan: '#3ef0ff',
+  yellow: '#ffd23e',
+  green: '#3eff8a',
+  red: '#ff5050',
+  purple: '#9d3eff',
+  dim: '#5a3a8a',
+};
+
+const PIX_FONT = '"Press Start 2P", monospace';
+const GRID_W = 16;
+const GRID_H = 20;
+
+// =================== PIXEL ART DATA ===================
+// 16w x 20h grid. ' ' = transparent. Letters map to color slots.
+// Layers stack: skin -> outfit -> hair -> eyes -> mouth -> accessory
+
+const SKIN = [
+  '                ',
+  '     ssss       ',
+  '    ssssss      ',
+  '   ssssssss     ',
+  '   ssssssss     ',
+  '   ssssssss     ',
+  '   ssssssss     ',
+  '   ssssssss     ',
+  '    ssssss      ',
+  '     ssss       ',
+  '      ss        ',
+  '                ',
+  '                ',
+  '                ',
+  '                ',
+  '                ',
+  '                ',
+  '                ',
+  '                ',
+  '                ',
+];
+
+const HAIR_STYLES = {
+  short: [
+    '                ',
+    '     hhhh       ',
+    '    hhhhhh      ',
+    '   hhhhhhhh     ',
+    '   hhhhhhhh     ',
+    '   h      h     ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+  ],
+  long: [
+    '                ',
+    '     hhhh       ',
+    '    hhhhhh      ',
+    '   hhhhhhhh     ',
+    '  hhhhhhhhhh    ',
+    '  hh      hh    ',
+    '  hh      hh    ',
+    '  hh      hh    ',
+    '   h      h     ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+  ],
+  spiky: [
+    '   h h h h      ',
+    '   hhhhhh       ',
+    '  hhhhhhhh      ',
+    ' hhhhhhhhhh     ',
+    '  hhhhhhhh      ',
+    '   h    h       ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+  ],
+  ponytail: [
+    '                ',
+    '     hhhh       ',
+    '    hhhhhh      ',
+    '   hhhhhhhhh    ',
+    '   hhhhhhhh hh  ',
+    '   h      h hh  ',
+    '             hh ',
+    '             hh ',
+    '              h ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+  ],
+  curly: [
+    '   hh hh hh     ',
+    '  hhhhhhhhh     ',
+    '  hh hhh hh     ',
+    ' hhhhhhhhhh     ',
+    ' hh hhhh hh     ',
+    '  h      h      ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+  ],
+  buzz: [
+    '                ',
+    '     hhhh       ',
+    '    hhhhhh      ',
+    '   hhhhhhhh     ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+  ],
+};
+
+const EYES = {
+  round: { rows: [[6, 4], [6, 9]], style: 'round' },
+  sharp: { rows: [[6, 4], [6, 9]], style: 'sharp' },
+  closed: { rows: [[6, 4], [6, 9]], style: 'closed' },
+};
+
+const OUTFITS = {
+  labcoat: [
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '   oo    oo     ',
+    '  ooooooooo     ',
+    ' ooooooooooo    ',
+    ' oooooaaoooo    ',
+    ' oooooaaoooo    ',
+    ' oooooooooo     ',
+    ' oooooooooo     ',
+    '  ooo    ooo    ',
+    '  ooo    ooo    ',
+  ],
+  hoodie: [
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '   oo    oo     ',
+    '  ooaaaaaoo     ',
+    ' oooaaaaaooo    ',
+    ' oooaaaaaooo    ',
+    ' oooooooooooo   ',
+    ' oooooooooooo   ',
+    ' oooooooooooo   ',
+    '  ooo    ooo    ',
+    '  ooo    ooo    ',
+  ],
+  uniform: [
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '   oo    oo     ',
+    '  oo aaa oo     ',
+    ' ooo aaa ooo    ',
+    ' ooo aaa ooo    ',
+    ' oooooooooo     ',
+    ' oooooooooo     ',
+    ' oooooooooo     ',
+    '  ooo    ooo    ',
+    '  ooo    ooo    ',
+  ],
+  tee: [
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '   oo    oo     ',
+    '  oooooooooo    ',
+    ' oooooooooooo   ',
+    ' oooaaaaaaooo   ',
+    ' oooaaaaaaooo   ',
+    ' oooooooooooo   ',
+    ' oooooooooooo   ',
+    '  ooo    ooo    ',
+    '  ooo    ooo    ',
+  ],
+};
+
+const ACCESSORIES = {
+  none: null,
+  glasses: [
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '   gggg ggggg   ',
+    '   g  g g   g   ',
+    '   gggg ggggg   ',
+    '                ',
+    '                ',
+  ],
+  goggles: [
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '   gg gg gggg   ',
+    '   gggggggggg   ',
+    '   gggg ggggg   ',
+    '                ',
+    '                ',
+    '                ',
+  ],
+  headphones: [
+    '                ',
+    '   gggggggggg   ',
+    '  g          g  ',
+    '  g          g  ',
+    '  gg        gg  ',
+    '  gg        gg  ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+  ],
+  beanie: [
+    '   bbbbbbbbbb   ',
+    '   bbbbbbbbbb   ',
+    '   bbbbbbbbbb   ',
+    '   bbbbbbbbbb   ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+    '                ',
+  ],
+};
+
+// =================== EXPRESSIONS (mouth + eye state) ===================
+const EXPRESSIONS = {
+  neutral: { mouth: 'flat', eyes: 'open' },
+  happy: { mouth: 'smile', eyes: 'open' },
+  thrilled: { mouth: 'bigsmile', eyes: 'sharp' },
+  shocked: { mouth: 'o', eyes: 'wide' },
+  sad: { mouth: 'frown', eyes: 'closed' },
+};
+
+// =================== OPTION LISTS ===================
+const SKIN_OPTIONS = [
+  { id: 'pale', color: '#ffd9b5', shade: '#d9aa82' },
+  { id: 'fair', color: '#f4c498', shade: '#c89870' },
+  { id: 'tan',  color: '#d4a373', shade: '#9c7548' },
+  { id: 'brown', color: '#a17050', shade: '#6b4530' },
+  { id: 'dark', color: '#5e3a20', shade: '#3a2210' },
+  { id: 'mint', color: '#a8f0c8', shade: '#6ec298' },
+];
+const HAIR_OPTIONS = [
+  { id: 'black', color: '#2a2a3a' },
+  { id: 'brown', color: '#7a4a26' },
+  { id: 'blonde', color: '#f0d56b' },
+  { id: 'red', color: '#d8482b' },
+  { id: 'pink', color: '#ff7ec0' },
+  { id: 'cyan', color: '#5ee0e8' },
+  { id: 'purple', color: '#a06ee0' },
+  { id: 'white', color: '#f0f0f0' },
+];
+const EYE_OPTIONS = [
+  { id: 'brown', color: '#5a3a1a' },
+  { id: 'blue', color: '#3a7adb' },
+  { id: 'green', color: '#3aaa5a' },
+  { id: 'amber', color: '#d49b3a' },
+  { id: 'red', color: '#c83a3a' },
+  { id: 'violet', color: '#a064d4' },
+];
+const OUTFIT_COLORS = [
+  { id: 'white', main: '#f0f0f0', accent: '#3ef0ff' },
+  { id: 'red', main: '#d83a3a', accent: '#fff8e6' },
+  { id: 'blue', main: '#3a6fd8', accent: '#ffd23e' },
+  { id: 'green', main: '#3aaa5a', accent: '#fff8e6' },
+  { id: 'purple', main: '#7a3ad4', accent: '#ff3ea5' },
+  { id: 'black', main: '#1a1a25', accent: '#3ef0ff' },
+];
+const HAIR_LIST = ['short', 'long', 'spiky', 'ponytail', 'curly', 'buzz'];
+const EYE_STYLES = ['round', 'sharp', 'closed'];
+const OUTFIT_LIST = ['labcoat', 'hoodie', 'uniform', 'tee'];
+const ACC_LIST = ['none', 'glasses', 'goggles', 'headphones', 'beanie'];
+
+const TITLES = [
+  'Apprentice', 'Lab Rat', 'Beaker Boss', 'Atom Ace', 'Reaction Rookie',
+  'Mole Master', 'Ion Hunter', 'Catalyst Kid', 'Solid Gold', 'Periodic Pro',
+];
+
+const BADGES = ['🧪', '⚗️', '🔬', '⚛️', '🧬', '💎', '🔥', '⭐', '👑', '🌟'];
+
+const CLASSES = {
+  alchemist: {
+    name: 'Alchemist',
+    icon: '⚗️',
+    desc: 'The Builder. Bonus hint shows ion charges. +10% score on Build rounds.',
+    color: PALETTE.green,
+  },
+  scholar: {
+    name: 'Scholar',
+    icon: '📚',
+    desc: 'The Knower. Auto-eliminates 1 wrong option. +10% score on Name rounds.',
+    color: PALETTE.cyan,
+  },
+  strategist: {
+    name: 'Strategist',
+    icon: '⚖️',
+    desc: 'The Balancer. 4 lives instead of 3. Atom counter shows red/blue hints.',
+    color: PALETTE.pink,
+  },
+};
+
+// =================== GAME CONTENT ===================
+const IONIC = {
+  binary: [
+    { f: 'NaCl', n: 'sodium chloride', cat: { sym: 'Na', ch: 1 }, an: { sym: 'Cl', ch: -1 } },
+    { f: 'MgO', n: 'magnesium oxide', cat: { sym: 'Mg', ch: 2 }, an: { sym: 'O', ch: -2 } },
+    { f: 'KBr', n: 'potassium bromide', cat: { sym: 'K', ch: 1 }, an: { sym: 'Br', ch: -1 } },
+    { f: 'CaO', n: 'calcium oxide', cat: { sym: 'Ca', ch: 2 }, an: { sym: 'O', ch: -2 } },
+    { f: 'Li₂O', n: 'lithium oxide', cat: { sym: 'Li', ch: 1 }, an: { sym: 'O', ch: -2 } },
+    { f: 'Na₂S', n: 'sodium sulfide', cat: { sym: 'Na', ch: 1 }, an: { sym: 'S', ch: -2 } },
+    { f: 'AlCl₃', n: 'aluminium chloride', cat: { sym: 'Al', ch: 3 }, an: { sym: 'Cl', ch: -1 } },
+    { f: 'CaF₂', n: 'calcium fluoride', cat: { sym: 'Ca', ch: 2 }, an: { sym: 'F', ch: -1 } },
+    { f: 'MgCl₂', n: 'magnesium chloride', cat: { sym: 'Mg', ch: 2 }, an: { sym: 'Cl', ch: -1 } },
+    { f: 'BaO', n: 'barium oxide', cat: { sym: 'Ba', ch: 2 }, an: { sym: 'O', ch: -2 } },
+    { f: 'KI', n: 'potassium iodide', cat: { sym: 'K', ch: 1 }, an: { sym: 'I', ch: -1 } },
+    { f: 'Al₂O₃', n: 'aluminium oxide', cat: { sym: 'Al', ch: 3 }, an: { sym: 'O', ch: -2 } },
+  ],
+  transition: [
+    { f: 'FeCl₂', n: 'iron(II) chloride', cat: { sym: 'Fe', ch: 2 }, an: { sym: 'Cl', ch: -1 }, roman: 'II' },
+    { f: 'FeCl₃', n: 'iron(III) chloride', cat: { sym: 'Fe', ch: 3 }, an: { sym: 'Cl', ch: -1 }, roman: 'III' },
+    { f: 'CuO', n: 'copper(II) oxide', cat: { sym: 'Cu', ch: 2 }, an: { sym: 'O', ch: -2 }, roman: 'II' },
+    { f: 'Cu₂O', n: 'copper(I) oxide', cat: { sym: 'Cu', ch: 1 }, an: { sym: 'O', ch: -2 }, roman: 'I' },
+    { f: 'FeO', n: 'iron(II) oxide', cat: { sym: 'Fe', ch: 2 }, an: { sym: 'O', ch: -2 }, roman: 'II' },
+    { f: 'Fe₂O₃', n: 'iron(III) oxide', cat: { sym: 'Fe', ch: 3 }, an: { sym: 'O', ch: -2 }, roman: 'III' },
+    { f: 'PbO₂', n: 'lead(IV) oxide', cat: { sym: 'Pb', ch: 4 }, an: { sym: 'O', ch: -2 }, roman: 'IV' },
+    { f: 'SnCl₂', n: 'tin(II) chloride', cat: { sym: 'Sn', ch: 2 }, an: { sym: 'Cl', ch: -1 }, roman: 'II' },
+    { f: 'CuCl', n: 'copper(I) chloride', cat: { sym: 'Cu', ch: 1 }, an: { sym: 'Cl', ch: -1 }, roman: 'I' },
+    { f: 'PbO', n: 'lead(II) oxide', cat: { sym: 'Pb', ch: 2 }, an: { sym: 'O', ch: -2 }, roman: 'II' },
+  ],
+  polyatomic: [
+    { f: 'NaNO₃', n: 'sodium nitrate', cat: { sym: 'Na', ch: 1 }, an: { sym: 'NO₃', ch: -1 } },
+    { f: 'CaCO₃', n: 'calcium carbonate', cat: { sym: 'Ca', ch: 2 }, an: { sym: 'CO₃', ch: -2 } },
+    { f: 'Mg(OH)₂', n: 'magnesium hydroxide', cat: { sym: 'Mg', ch: 2 }, an: { sym: 'OH', ch: -1 } },
+    { f: 'K₂SO₄', n: 'potassium sulfate', cat: { sym: 'K', ch: 1 }, an: { sym: 'SO₄', ch: -2 } },
+    { f: 'NH₄Cl', n: 'ammonium chloride', cat: { sym: 'NH₄', ch: 1 }, an: { sym: 'Cl', ch: -1 } },
+    { f: 'Na₂CO₃', n: 'sodium carbonate', cat: { sym: 'Na', ch: 1 }, an: { sym: 'CO₃', ch: -2 } },
+    { f: 'Al(OH)₃', n: 'aluminium hydroxide', cat: { sym: 'Al', ch: 3 }, an: { sym: 'OH', ch: -1 } },
+    { f: 'Ca(NO₃)₂', n: 'calcium nitrate', cat: { sym: 'Ca', ch: 2 }, an: { sym: 'NO₃', ch: -1 } },
+    { f: '(NH₄)₂SO₄', n: 'ammonium sulfate', cat: { sym: 'NH₄', ch: 1 }, an: { sym: 'SO₄', ch: -2 } },
+    { f: 'KMnO₄', n: 'potassium permanganate', cat: { sym: 'K', ch: 1 }, an: { sym: 'MnO₄', ch: -1 } },
+  ],
+};
+
+const COVALENT = [
+  { f: 'CO', n: 'carbon monoxide', e1: 'C', c1: 1, e2: 'O', c2: 1 },
+  { f: 'CO₂', n: 'carbon dioxide', e1: 'C', c1: 1, e2: 'O', c2: 2 },
+  { f: 'NO', n: 'nitrogen monoxide', e1: 'N', c1: 1, e2: 'O', c2: 1 },
+  { f: 'NO₂', n: 'nitrogen dioxide', e1: 'N', c1: 1, e2: 'O', c2: 2 },
+  { f: 'N₂O', n: 'dinitrogen monoxide', e1: 'N', c1: 2, e2: 'O', c2: 1 },
+  { f: 'N₂O₄', n: 'dinitrogen tetroxide', e1: 'N', c1: 2, e2: 'O', c2: 4 },
+  { f: 'N₂O₅', n: 'dinitrogen pentoxide', e1: 'N', c1: 2, e2: 'O', c2: 5 },
+  { f: 'SO₂', n: 'sulfur dioxide', e1: 'S', c1: 1, e2: 'O', c2: 2 },
+  { f: 'SO₃', n: 'sulfur trioxide', e1: 'S', c1: 1, e2: 'O', c2: 3 },
+  { f: 'PCl₃', n: 'phosphorus trichloride', e1: 'P', c1: 1, e2: 'Cl', c2: 3 },
+  { f: 'PCl₅', n: 'phosphorus pentachloride', e1: 'P', c1: 1, e2: 'Cl', c2: 5 },
+  { f: 'CCl₄', n: 'carbon tetrachloride', e1: 'C', c1: 1, e2: 'Cl', c2: 4 },
+  { f: 'P₄O₁₀', n: 'tetraphosphorus decoxide', e1: 'P', c1: 4, e2: 'O', c2: 10 },
+  { f: 'SF₆', n: 'sulfur hexafluoride', e1: 'S', c1: 1, e2: 'F', c2: 6 },
+  { f: 'XeF₄', n: 'xenon tetrafluoride', e1: 'Xe', c1: 1, e2: 'F', c2: 4 },
+];
+
+const PREFIXES = ['mono', 'di', 'tri', 'tetra', 'penta', 'hexa', 'hepta', 'octa', 'nona', 'deca'];
+const ELEMENT_NAMES = {
+  H: 'hydrogen', C: 'carbon', N: 'nitrogen', O: 'oxide',
+  F: 'fluoride', Cl: 'chloride', Br: 'bromide', I: 'iodide',
+  S: 'sulfur', P: 'phosphorus', Xe: 'xenon',
+};
+const ELEMENT_SUFFIX = {
+  H: 'hydride', O: 'oxide', F: 'fluoride', Cl: 'chloride',
+  Br: 'bromide', I: 'iodide', N: 'nitride', S: 'sulfide', P: 'phosphide',
+};
+const FIRST_NAMES = {
+  H: 'hydrogen', C: 'carbon', N: 'nitrogen', O: 'oxygen',
+  S: 'sulfur', P: 'phosphorus', Xe: 'xenon',
+};
+
+const EQUATIONS = {
+  synthesis: [
+    { r: [{ f: 'H₂', c: 2 }, { f: 'O₂', c: 1 }], p: [{ f: 'H₂O', c: 2 }] },
+    { r: [{ f: 'N₂', c: 1 }, { f: 'H₂', c: 3 }], p: [{ f: 'NH₃', c: 2 }] },
+    { r: [{ f: 'Mg', c: 2 }, { f: 'O₂', c: 1 }], p: [{ f: 'MgO', c: 2 }] },
+    { r: [{ f: 'Al', c: 4 }, { f: 'O₂', c: 3 }], p: [{ f: 'Al₂O₃', c: 2 }] },
+  ],
+  decomposition: [
+    { r: [{ f: 'H₂O', c: 2 }], p: [{ f: 'H₂', c: 2 }, { f: 'O₂', c: 1 }] },
+    { r: [{ f: 'CaCO₃', c: 1 }], p: [{ f: 'CaO', c: 1 }, { f: 'CO₂', c: 1 }] },
+    { r: [{ f: 'KClO₃', c: 2 }], p: [{ f: 'KCl', c: 2 }, { f: 'O₂', c: 3 }] },
+    { r: [{ f: 'HgO', c: 2 }], p: [{ f: 'Hg', c: 2 }, { f: 'O₂', c: 1 }] },
+  ],
+  single: [
+    { r: [{ f: 'Zn', c: 1 }, { f: 'HCl', c: 2 }], p: [{ f: 'ZnCl₂', c: 1 }, { f: 'H₂', c: 1 }] },
+    { r: [{ f: 'Na', c: 2 }, { f: 'H₂O', c: 2 }], p: [{ f: 'NaOH', c: 2 }, { f: 'H₂', c: 1 }] },
+    { r: [{ f: 'Fe', c: 1 }, { f: 'CuSO₄', c: 1 }], p: [{ f: 'FeSO₄', c: 1 }, { f: 'Cu', c: 1 }] },
+    { r: [{ f: 'Mg', c: 1 }, { f: 'HCl', c: 2 }], p: [{ f: 'MgCl₂', c: 1 }, { f: 'H₂', c: 1 }] },
+  ],
+  double: [
+    { r: [{ f: 'AgNO₃', c: 1 }, { f: 'NaCl', c: 1 }], p: [{ f: 'AgCl', c: 1 }, { f: 'NaNO₃', c: 1 }] },
+    { r: [{ f: 'BaCl₂', c: 1 }, { f: 'Na₂SO₄', c: 1 }], p: [{ f: 'BaSO₄', c: 1 }, { f: 'NaCl', c: 2 }] },
+    { r: [{ f: 'HCl', c: 1 }, { f: 'NaOH', c: 1 }], p: [{ f: 'NaCl', c: 1 }, { f: 'H₂O', c: 1 }] },
+    { r: [{ f: 'H₂SO₄', c: 1 }, { f: 'NaOH', c: 2 }], p: [{ f: 'Na₂SO₄', c: 1 }, { f: 'H₂O', c: 2 }] },
+  ],
+  combustion: [
+    { r: [{ f: 'CH₄', c: 1 }, { f: 'O₂', c: 2 }], p: [{ f: 'CO₂', c: 1 }, { f: 'H₂O', c: 2 }] },
+    { r: [{ f: 'C₃H₈', c: 1 }, { f: 'O₂', c: 5 }], p: [{ f: 'CO₂', c: 3 }, { f: 'H₂O', c: 4 }] },
+    { r: [{ f: 'C₂H₆', c: 2 }, { f: 'O₂', c: 7 }], p: [{ f: 'CO₂', c: 4 }, { f: 'H₂O', c: 6 }] },
+    { r: [{ f: 'C₄H₁₀', c: 2 }, { f: 'O₂', c: 13 }], p: [{ f: 'CO₂', c: 8 }, { f: 'H₂O', c: 10 }] },
+  ],
+};
+
+// =================== HELPERS ===================
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+const SUB = { '₀': 0, '₁': 1, '₂': 2, '₃': 3, '₄': 4, '₅': 5, '₆': 6, '₇': 7, '₈': 8, '₉': 9 };
+function readNum(s, i) {
+  let n = '';
+  while (i < s.length && (SUB[s[i]] !== undefined || /\d/.test(s[i]))) {
+    n += SUB[s[i]] !== undefined ? SUB[s[i]] : s[i];
+    i++;
+  }
+  return [n === '' ? 1 : parseInt(n), i];
+}
+
+function parseFormula(formula) {
+  const result = {};
+  function parseSeg(s, mult) {
+    let i = 0;
+    while (i < s.length) {
+      if (s[i] === '(') {
+        let depth = 1, j = i + 1;
+        while (j < s.length && depth > 0) {
+          if (s[j] === '(') depth++;
+          else if (s[j] === ')') depth--;
+          if (depth > 0) j++;
+        }
+        const inner = s.slice(i + 1, j);
+        i = j + 1;
+        const [n, ni] = readNum(s, i);
+        i = ni;
+        const sub = {};
+        parseSegInto(inner, sub);
+        for (const [el, c] of Object.entries(sub)) {
+          result[el] = (result[el] || 0) + c * n * mult;
+        }
+      } else if (/[A-Z]/.test(s[i])) {
+        let el = s[i++];
+        if (i < s.length && /[a-z]/.test(s[i])) el += s[i++];
+        const [n, ni] = readNum(s, i);
+        i = ni;
+        result[el] = (result[el] || 0) + n * mult;
+      } else { i++; }
+    }
+  }
+  function parseSegInto(s, target) {
+    let i = 0;
+    while (i < s.length) {
+      if (s[i] === '(') {
+        let depth = 1, j = i + 1;
+        while (j < s.length && depth > 0) {
+          if (s[j] === '(') depth++;
+          else if (s[j] === ')') depth--;
+          if (depth > 0) j++;
+        }
+        const inner = s.slice(i + 1, j);
+        i = j + 1;
+        const [n, ni] = readNum(s, i);
+        i = ni;
+        const sub = {};
+        parseSegInto(inner, sub);
+        for (const [el, c] of Object.entries(sub)) {
+          target[el] = (target[el] || 0) + c * n;
+        }
+      } else if (/[A-Z]/.test(s[i])) {
+        let el = s[i++];
+        if (i < s.length && /[a-z]/.test(s[i])) el += s[i++];
+        const [n, ni] = readNum(s, i);
+        i = ni;
+        target[el] = (target[el] || 0) + n;
+      } else { i++; }
+    }
+  }
+  parseSeg(formula, 1);
+  return result;
+}
+
+function atomCount(side) {
+  const tot = {};
+  for (const m of side) {
+    const parsed = parseFormula(m.f);
+    for (const [el, c] of Object.entries(parsed)) {
+      tot[el] = (tot[el] || 0) + c * m.c;
+    }
+  }
+  return tot;
+}
+
+function isBalanced(reactants, products) {
+  const r = atomCount(reactants), p = atomCount(products);
+  const allEls = new Set([...Object.keys(r), ...Object.keys(p)]);
+  for (const el of allEls) if ((r[el] || 0) !== (p[el] || 0)) return false;
+  return true;
+}
+
+// =================== SPRITE COMPONENT ===================
+function Sprite({ char, expression = 'neutral', size = 160 }) {
+  if (!char) return null;
+  const skin = SKIN_OPTIONS.find(s => s.id === char.skin) || SKIN_OPTIONS[0];
+  const hair = HAIR_OPTIONS.find(h => h.id === char.hairColor) || HAIR_OPTIONS[0];
+  const eye = EYE_OPTIONS.find(e => e.id === char.eyeColor) || EYE_OPTIONS[0];
+  const outfit = OUTFIT_COLORS.find(o => o.id === char.outfitColor) || OUTFIT_COLORS[0];
+  const accColors = { glasses: '#1a1a25', goggles: '#3ef0ff', headphones: '#d83a3a', beanie: '#ff3ea5' };
+
+  const colorMap = {
+    s: skin.color, h: hair.color, o: outfit.main, a: outfit.accent,
+    g: accColors[char.accessory] || '#1a1a25', b: accColors.beanie,
+  };
+
+  const layers = [
+    SKIN, OUTFITS[char.outfit] || OUTFITS.tee, HAIR_STYLES[char.hair] || HAIR_STYLES.short,
+  ];
+  if (char.accessory && char.accessory !== 'none') layers.push(ACCESSORIES[char.accessory]);
+
+  const cell = size / GRID_W;
+  const rects = [];
+  let key = 0;
+  layers.forEach(layer => {
+    if (!layer) return;
+    layer.forEach((row, y) => {
+      for (let x = 0; x < row.length; x++) {
+        const ch = row[x];
+        if (ch === ' ') continue;
+        const color = colorMap[ch];
+        if (!color) continue;
+        rects.push(<rect key={key++} x={x * cell} y={y * cell} width={cell} height={cell} fill={color} />);
+      }
+    });
+  });
+
+  // Eyes
+  const expr = EXPRESSIONS[expression] || EXPRESSIONS.neutral;
+  const eyeStyle = expression === 'shocked' ? 'wide' : (expression === 'sad' ? 'closed' : (char.eyes || 'round'));
+  const eyeY = 6 * cell;
+  if (eyeStyle === 'closed') {
+    rects.push(<rect key={key++} x={6 * cell} y={eyeY + cell * 0.3} width={cell * 1.2} height={cell * 0.3} fill="#1a1a25" />);
+    rects.push(<rect key={key++} x={9 * cell} y={eyeY + cell * 0.3} width={cell * 1.2} height={cell * 0.3} fill="#1a1a25" />);
+  } else if (eyeStyle === 'wide') {
+    rects.push(<rect key={key++} x={6 * cell} y={eyeY} width={cell * 1.2} height={cell * 1.2} fill={eye.color} />);
+    rects.push(<rect key={key++} x={9 * cell} y={eyeY} width={cell * 1.2} height={cell * 1.2} fill={eye.color} />);
+    rects.push(<rect key={key++} x={6.3 * cell} y={eyeY + 0.3 * cell} width={cell * 0.4} height={cell * 0.4} fill="#fff" />);
+    rects.push(<rect key={key++} x={9.3 * cell} y={eyeY + 0.3 * cell} width={cell * 0.4} height={cell * 0.4} fill="#fff" />);
+  } else if (eyeStyle === 'sharp') {
+    rects.push(<rect key={key++} x={6 * cell} y={eyeY + 0.4 * cell} width={cell * 1.2} height={cell * 0.5} fill={eye.color} />);
+    rects.push(<rect key={key++} x={9 * cell} y={eyeY + 0.4 * cell} width={cell * 1.2} height={cell * 0.5} fill={eye.color} />);
+  } else {
+    rects.push(<rect key={key++} x={6 * cell} y={eyeY} width={cell} height={cell} fill={eye.color} />);
+    rects.push(<rect key={key++} x={9 * cell} y={eyeY} width={cell} height={cell} fill={eye.color} />);
+    rects.push(<rect key={key++} x={6.2 * cell} y={eyeY + 0.2 * cell} width={cell * 0.3} height={cell * 0.3} fill="#fff" />);
+    rects.push(<rect key={key++} x={9.2 * cell} y={eyeY + 0.2 * cell} width={cell * 0.3} height={cell * 0.3} fill="#fff" />);
+  }
+
+  // Mouth
+  const mY = 8.5 * cell;
+  if (expr.mouth === 'smile') {
+    rects.push(<rect key={key++} x={7 * cell} y={mY} width={cell * 2} height={cell * 0.4} fill="#7a2020" />);
+    rects.push(<rect key={key++} x={6.5 * cell} y={mY - 0.2 * cell} width={cell * 0.5} height={cell * 0.5} fill="#7a2020" />);
+    rects.push(<rect key={key++} x={9 * cell} y={mY - 0.2 * cell} width={cell * 0.5} height={cell * 0.5} fill="#7a2020" />);
+  } else if (expr.mouth === 'bigsmile') {
+    rects.push(<rect key={key++} x={6.5 * cell} y={mY} width={cell * 3} height={cell * 0.6} fill="#7a2020" />);
+    rects.push(<rect key={key++} x={7 * cell} y={mY + 0.5 * cell} width={cell * 2} height={cell * 0.3} fill="#fff" />);
+  } else if (expr.mouth === 'o') {
+    rects.push(<rect key={key++} x={7.5 * cell} y={mY} width={cell} height={cell * 0.8} fill="#7a2020" />);
+  } else if (expr.mouth === 'frown') {
+    rects.push(<rect key={key++} x={7 * cell} y={mY + 0.3 * cell} width={cell * 2} height={cell * 0.4} fill="#7a2020" />);
+    rects.push(<rect key={key++} x={6.5 * cell} y={mY} width={cell * 0.5} height={cell * 0.5} fill="#7a2020" />);
+    rects.push(<rect key={key++} x={9 * cell} y={mY} width={cell * 0.5} height={cell * 0.5} fill="#7a2020" />);
+  } else {
+    rects.push(<rect key={key++} x={7 * cell} y={mY + 0.2 * cell} width={cell * 2} height={cell * 0.3} fill="#7a2020" />);
+  }
+
+  return (
+    <svg width={size} height={size * GRID_H / GRID_W} viewBox={`0 0 ${size} ${size * GRID_H / GRID_W}`}
+      style={{ imageRendering: 'pixelated', shapeRendering: 'crispEdges' }}>
+      {rects}
+    </svg>
+  );
+}
+
+// =================== UI PRIMITIVES ===================
+function PixelButton({ children, onClick, color = PALETTE.pink, disabled, small, full, style }) {
+  return (
+    <button onClick={onClick} disabled={disabled}
+      style={{
+        background: disabled ? PALETTE.dim : color,
+        color: PALETTE.bg,
+        fontFamily: PIX_FONT,
+        fontSize: small ? 10 : 12,
+        padding: small ? '8px 12px' : '12px 18px',
+        border: `3px solid ${PALETTE.bg}`,
+        boxShadow: `4px 4px 0 ${PALETTE.bg}, inset -2px -2px 0 rgba(0,0,0,.3), inset 2px 2px 0 rgba(255,255,255,.3)`,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+        width: full ? '100%' : 'auto',
+        opacity: disabled ? 0.5 : 1,
+        transition: 'transform 0.05s',
+        ...style,
+      }}
+      onMouseDown={e => !disabled && (e.currentTarget.style.transform = 'translate(2px, 2px)')}
+      onMouseUp={e => (e.currentTarget.style.transform = 'translate(0,0)')}
+      onMouseLeave={e => (e.currentTarget.style.transform = 'translate(0,0)')}>
+      {children}
+    </button>
+  );
+}
+
+function PixelPanel({ children, color = PALETTE.panel, style }) {
+  return (
+    <div style={{
+      background: color,
+      border: `4px solid ${PALETTE.ink}`,
+      boxShadow: `6px 6px 0 ${PALETTE.bg}`,
+      padding: 16,
+      fontFamily: PIX_FONT,
+      color: PALETTE.ink,
+      ...style,
+    }}>{children}</div>
+  );
+}
+
+function NeonText({ children, color = PALETTE.cyan, size = 24, style }) {
+  return (
+    <div style={{
+      fontFamily: PIX_FONT,
+      fontSize: size,
+      color,
+      textShadow: `2px 2px 0 ${PALETTE.bg}, 0 0 12px ${color}`,
+      lineHeight: 1.4,
+      ...style,
+    }}>{children}</div>
+  );
+}
+
+function HeartRow({ lives, max }) {
+  return (
+    <div style={{ display: 'flex', gap: 4 }}>
+      {Array.from({ length: max }).map((_, i) => (
+        <span key={i} style={{ fontSize: 18, filter: i < lives ? 'none' : 'grayscale(1) opacity(0.3)' }}>❤️</span>
+      ))}
+    </div>
+  );
+}
+
+function StarRow({ stars }) {
+  return (
+    <div style={{ display: 'flex', gap: 2 }}>
+      {[1, 2, 3].map(i => (
+        <span key={i} style={{ fontSize: 16, filter: stars >= i ? 'none' : 'grayscale(1) opacity(0.3)' }}>⭐</span>
+      ))}
+    </div>
+  );
+}
+
+function SpeechBubble({ char, text }) {
+  if (!char) return null;
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, marginBottom: 12 }}>
+      <div style={{ flex: '0 0 64px' }}>
+        <Sprite char={char} expression="happy" size={64} />
+      </div>
+      <div style={{
+        flex: 1, background: PALETTE.ink, color: PALETTE.bg, padding: 10,
+        fontFamily: PIX_FONT, fontSize: 9, lineHeight: 1.5, position: 'relative',
+        border: `3px solid ${PALETTE.bg}`,
+      }}>{text}</div>
+    </div>
+  );
+}
+
+// =================== TITLE SCREEN ===================
+function TitleScreen({ hasSave, onNew, onContinue, onWipe }) {
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', padding: 16, gap: 20 }}>
+      <div style={{ textAlign: 'center', marginBottom: 12 }}>
+        <NeonText color={PALETTE.yellow} size={36} style={{ marginBottom: 6 }}>CHEM</NeonText>
+        <NeonText color={PALETTE.pink} size={36}>QUEST</NeonText>
+        <div style={{ marginTop: 16, fontFamily: PIX_FONT, fontSize: 9, color: PALETTE.cyan, letterSpacing: 2 }}>
+          ⚛ A NAMING & BALANCING ADVENTURE ⚛
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: 240 }}>
+        {hasSave && <PixelButton onClick={onContinue} color={PALETTE.green} full>▶ Continue</PixelButton>}
+        <PixelButton onClick={onNew} color={PALETTE.pink} full>+ New Game</PixelButton>
+        {hasSave && <PixelButton onClick={onWipe} color={PALETTE.dim} full small>Wipe Save</PixelButton>}
+      </div>
+
+      <div style={{ marginTop: 24, fontFamily: PIX_FONT, fontSize: 8, color: PALETTE.dim, textAlign: 'center' }}>
+        Year 10 Chemistry • NSW
+      </div>
+    </div>
+  );
+}
+
+// =================== CHARACTER CREATION ===================
+function CharacterCreation({ onDone }) {
+  const [step, setStep] = useState(0); // 0=class, 1=appearance, 2=name+title
+  const [char, setChar] = useState({
+    name: '', title: 'Apprentice', badge: '🧪', charClass: 'alchemist',
+    skin: 'fair', hair: 'short', hairColor: 'brown', eyes: 'round', eyeColor: 'brown',
+    outfit: 'labcoat', outfitColor: 'white', accessory: 'none',
+  });
+
+  const update = (k, v) => setChar(c => ({ ...c, [k]: v }));
+
+  const Picker = ({ label, options, value, onChange, render }) => (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontFamily: PIX_FONT, fontSize: 9, color: PALETTE.cyan, marginBottom: 6 }}>{label}</div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {options.map(opt => (
+          <button key={opt.id || opt}
+            onClick={() => onChange(opt.id || opt)}
+            style={{
+              padding: 6,
+              background: (value === (opt.id || opt)) ? PALETTE.pink : PALETTE.panel,
+              border: `2px solid ${value === (opt.id || opt) ? PALETTE.yellow : PALETTE.bg}`,
+              cursor: 'pointer', fontFamily: PIX_FONT, fontSize: 9, color: PALETTE.ink,
+              minWidth: 40,
+            }}>
+            {render ? render(opt) : (opt.id || opt)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight: '100vh', padding: 12, paddingBottom: 90 }}>
+      <NeonText color={PALETTE.yellow} size={16} style={{ textAlign: 'center', marginBottom: 12 }}>
+        {step === 0 ? 'CHOOSE CLASS' : step === 1 ? 'CUSTOMISE' : 'NAME YOURSELF'}
+      </NeonText>
+
+      {step === 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {Object.entries(CLASSES).map(([id, c]) => (
+            <button key={id} onClick={() => { update('charClass', id); setStep(1); }}
+              style={{
+                background: char.charClass === id ? c.color : PALETTE.panel,
+                color: char.charClass === id ? PALETTE.bg : PALETTE.ink,
+                border: `4px solid ${char.charClass === id ? PALETTE.yellow : PALETTE.bg}`,
+                padding: 16, textAlign: 'left', fontFamily: PIX_FONT, cursor: 'pointer',
+                boxShadow: `4px 4px 0 ${PALETTE.bg}`,
+              }}>
+              <div style={{ fontSize: 18, marginBottom: 6 }}>{c.icon} {c.name.toUpperCase()}</div>
+              <div style={{ fontSize: 9, lineHeight: 1.6 }}>{c.desc}</div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {step === 1 && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16, background: PALETTE.bg2, padding: 12, border: `3px solid ${PALETTE.bg}` }}>
+            <Sprite char={char} expression="neutral" size={140} />
+          </div>
+
+          <Picker label="SKIN" options={SKIN_OPTIONS} value={char.skin} onChange={v => update('skin', v)}
+            render={o => <div style={{ width: 24, height: 24, background: o.color, border: `2px solid ${PALETTE.bg}` }} />} />
+          <Picker label="HAIR STYLE" options={HAIR_LIST} value={char.hair} onChange={v => update('hair', v)} />
+          <Picker label="HAIR COLOUR" options={HAIR_OPTIONS} value={char.hairColor} onChange={v => update('hairColor', v)}
+            render={o => <div style={{ width: 24, height: 24, background: o.color, border: `2px solid ${PALETTE.bg}` }} />} />
+          <Picker label="EYE STYLE" options={EYE_STYLES} value={char.eyes} onChange={v => update('eyes', v)} />
+          <Picker label="EYE COLOUR" options={EYE_OPTIONS} value={char.eyeColor} onChange={v => update('eyeColor', v)}
+            render={o => <div style={{ width: 24, height: 24, background: o.color, border: `2px solid ${PALETTE.bg}` }} />} />
+          <Picker label="OUTFIT" options={OUTFIT_LIST} value={char.outfit} onChange={v => update('outfit', v)} />
+          <Picker label="OUTFIT COLOUR" options={OUTFIT_COLORS} value={char.outfitColor} onChange={v => update('outfitColor', v)}
+            render={o => <div style={{ width: 24, height: 24, background: o.main, border: `2px solid ${PALETTE.bg}` }} />} />
+          <Picker label="ACCESSORY" options={ACC_LIST} value={char.accessory} onChange={v => update('accessory', v)} />
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+            <PixelButton onClick={() => setStep(0)} color={PALETTE.dim} small>◀ Back</PixelButton>
+            <PixelButton onClick={() => setStep(2)} color={PALETTE.green}>Next ▶</PixelButton>
+          </div>
+        </div>
+      )}
+
+      {step === 2 && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+            <Sprite char={char} expression="happy" size={140} />
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontFamily: PIX_FONT, fontSize: 9, color: PALETTE.cyan, marginBottom: 6 }}>NAME</div>
+            <input type="text" value={char.name} onChange={e => update('name', e.target.value.slice(0, 12))}
+              maxLength={12}
+              style={{
+                width: '100%', padding: 10, background: PALETTE.panel, color: PALETTE.ink,
+                border: `3px solid ${PALETTE.bg}`, fontFamily: PIX_FONT, fontSize: 14, boxSizing: 'border-box',
+              }} placeholder="e.g. Avi" />
+          </div>
+          <Picker label="TITLE" options={TITLES} value={char.title} onChange={v => update('title', v)} />
+          <Picker label="BADGE" options={BADGES} value={char.badge} onChange={v => update('badge', v)} render={b => <span style={{ fontSize: 16 }}>{b}</span>} />
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+            <PixelButton onClick={() => setStep(1)} color={PALETTE.dim} small>◀ Back</PixelButton>
+            <PixelButton onClick={() => char.name.trim() && onDone(char)} color={PALETTE.green} disabled={!char.name.trim()}>
+              Begin Quest ▶
+            </PixelButton>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =================== WORLD MAP ===================
+const WORLDS = [
+  { id: 'ionic', name: 'Ionic Island', icon: '⚡', color: PALETTE.cyan, levels: ['Binary', 'Transition Metals', 'Polyatomic'] },
+  { id: 'covalent', name: 'Covalent Cove', icon: '🌊', color: PALETTE.green, levels: ['Formula → Name', 'Name → Formula'] },
+  { id: 'equation', name: 'Equation Empire', icon: '⚖️', color: PALETTE.pink, levels: ['Synthesis', 'Decomposition', 'Single Replacement', 'Double Replacement', 'Combustion'] },
+];
+
+function WorldMap({ save, onPlay, onTitle }) {
+  const totalStars = Object.values(save.progress).reduce((s, w) => s + w.reduce((a, b) => a + b, 0), 0);
+  const maxStars = WORLDS.reduce((s, w) => s + w.levels.length * 3, 0);
+
+  return (
+    <div style={{ minHeight: '100vh', padding: 12, paddingBottom: 80 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16,
+        background: PALETTE.panel, padding: 12, border: `3px solid ${PALETTE.bg}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Sprite char={save.character} expression="happy" size={56} />
           <div>
-            <p class="eyebrow">Year 10 chemistry</p>
-            <h1>Balance Quest</h1>
-          </div>
-          <div class="score-strip" aria-label="Progress and score">
-            <div>
-              <span class="metric-label">XP</span>
-              <strong id="xpValue">0</strong>
-            </div>
-            <div>
-              <span class="metric-label">Streak</span>
-              <strong id="streakValue">0</strong>
-            </div>
-            <div>
-              <span class="metric-label">Level</span>
-              <strong id="levelValue">1</strong>
+            <div style={{ fontFamily: PIX_FONT, fontSize: 11, color: PALETTE.yellow }}>{save.character.badge} {save.character.name}</div>
+            <div style={{ fontFamily: PIX_FONT, fontSize: 8, color: PALETTE.cyan, marginTop: 2 }}>{save.character.title}</div>
+            <div style={{ fontFamily: PIX_FONT, fontSize: 8, color: CLASSES[save.character.charClass].color, marginTop: 2 }}>
+              {CLASSES[save.character.charClass].icon} {CLASSES[save.character.charClass].name}
             </div>
           </div>
-        </header>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontFamily: PIX_FONT, fontSize: 9, color: PALETTE.yellow }}>⭐ {totalStars}/{maxStars}</div>
+          <div style={{ fontFamily: PIX_FONT, fontSize: 8, color: PALETTE.ink, marginTop: 2 }}>SCORE: {save.stats.totalScore}</div>
+        </div>
+      </div>
 
-        <section class="mission-band" aria-live="polite">
-          <div class="mission-copy">
-            <span id="missionTag" class="mission-tag">Starter</span>
-            <h2 id="missionTitle">Loading mission...</h2>
-            <p id="missionContext"></p>
+      {/* Worlds */}
+      {WORLDS.map((w, wi) => {
+        const progress = save.progress[w.id];
+        const unlocked = wi === 0 || save.progress[WORLDS[wi - 1].id].some(s => s > 0);
+        return (
+          <div key={w.id} style={{
+            background: PALETTE.panel, border: `4px solid ${unlocked ? w.color : PALETTE.dim}`,
+            padding: 12, marginBottom: 12, opacity: unlocked ? 1 : 0.5,
+            boxShadow: `4px 4px 0 ${PALETTE.bg}`,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <span style={{ fontSize: 24 }}>{w.icon}</span>
+              <NeonText color={w.color} size={14}>{w.name.toUpperCase()}</NeonText>
+            </div>
+            {!unlocked && <div style={{ fontFamily: PIX_FONT, fontSize: 8, color: PALETTE.ink }}>🔒 Earn 1 star in previous world</div>}
+            {unlocked && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {w.levels.map((lv, li) => (
+                  <button key={li} onClick={() => onPlay(w.id, li)}
+                    style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      background: PALETTE.bg2, color: PALETTE.ink, border: `2px solid ${PALETTE.bg}`,
+                      padding: 10, cursor: 'pointer', fontFamily: PIX_FONT, fontSize: 9, textAlign: 'left',
+                    }}>
+                    <span>{li + 1}. {lv}</span>
+                    <StarRow stars={progress[li] || 0} />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          <div class="lab-visual" aria-hidden="true">
-            <div class="flask flask-left">
-              <span></span>
+        );
+      })}
+
+      <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
+        <PixelButton onClick={onTitle} color={PALETTE.dim} small>← Title</PixelButton>
+      </div>
+    </div>
+  );
+}
+
+// =================== REFERENCE SIDEBAR ===================
+function ReferenceSidebar({ open, onClose }) {
+  if (!open) return null;
+  const ions = [
+    { name: '+1 cations', items: ['Na⁺', 'K⁺', 'Li⁺', 'Ag⁺', 'NH₄⁺', 'Cu⁺'] },
+    { name: '+2 cations', items: ['Mg²⁺', 'Ca²⁺', 'Ba²⁺', 'Zn²⁺', 'Cu²⁺', 'Fe²⁺', 'Pb²⁺', 'Sn²⁺'] },
+    { name: '+3 cations', items: ['Al³⁺', 'Fe³⁺'] },
+    { name: '+4 cations', items: ['Pb⁴⁺', 'Sn⁴⁺'] },
+    { name: '−1 anions', items: ['Cl⁻', 'Br⁻', 'F⁻', 'I⁻', 'OH⁻', 'NO₃⁻', 'MnO₄⁻', 'HCO₃⁻'] },
+    { name: '−2 anions', items: ['O²⁻', 'S²⁻', 'CO₃²⁻', 'SO₄²⁻'] },
+    { name: '−3 anions', items: ['N³⁻', 'PO₄³⁻'] },
+  ];
+  const prefixes = PREFIXES.slice(0, 7).map((p, i) => `${i + 1}: ${p}-`).join('  ');
+  const periodicGroups = [
+    ['1', 'H Li Na K Rb Cs'], ['2', 'Be Mg Ca Sr Ba'], ['13', 'B Al Ga'], ['14', 'C Si Ge Sn Pb'],
+    ['15', 'N P As'], ['16', 'O S Se'], ['17', 'F Cl Br I'], ['18', 'He Ne Ar'],
+  ];
+  return (
+    <div style={{
+      position: 'fixed', top: 0, right: 0, width: '90%', maxWidth: 360, height: '100vh',
+      background: PALETTE.bg2, border: `4px solid ${PALETTE.cyan}`,
+      zIndex: 100, overflowY: 'auto', padding: 12,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <NeonText color={PALETTE.cyan} size={14}>📖 REFERENCE</NeonText>
+        <PixelButton onClick={onClose} small color={PALETTE.red}>✕</PixelButton>
+      </div>
+
+      <PixelPanel style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 10, color: PALETTE.yellow, marginBottom: 8 }}>ION CHARGES</div>
+        {ions.map(g => (
+          <div key={g.name} style={{ marginBottom: 6 }}>
+            <div style={{ fontSize: 8, color: PALETTE.cyan }}>{g.name}</div>
+            <div style={{ fontSize: 9, lineHeight: 1.6 }}>{g.items.join(' · ')}</div>
+          </div>
+        ))}
+      </PixelPanel>
+
+      <PixelPanel style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 10, color: PALETTE.yellow, marginBottom: 8 }}>COVALENT PREFIXES</div>
+        <div style={{ fontSize: 9, lineHeight: 1.8 }}>{prefixes}</div>
+        <div style={{ fontSize: 8, color: PALETTE.dim, marginTop: 6 }}>(drop "mono-" on first element)</div>
+      </PixelPanel>
+
+      <PixelPanel>
+        <div style={{ fontSize: 10, color: PALETTE.yellow, marginBottom: 8 }}>PERIODIC GROUPS</div>
+        {periodicGroups.map(([g, els]) => (
+          <div key={g} style={{ display: 'flex', gap: 6, marginBottom: 4, fontSize: 9 }}>
+            <span style={{ color: PALETTE.pink, minWidth: 20 }}>G{g}</span>
+            <span>{els}</span>
+          </div>
+        ))}
+        <div style={{ fontSize: 8, color: PALETTE.dim, marginTop: 6 }}>G1=+1, G2=+2, G13=+3, G15=−3, G16=−2, G17=−1</div>
+      </PixelPanel>
+    </div>
+  );
+}
+
+// =================== GAME HEADER (lives, score, streak) ===================
+function GameHud({ char, lives, maxLives, score, streak, onQuit, onRef }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      background: PALETTE.panel, padding: 8, marginBottom: 10, border: `3px solid ${PALETTE.bg}`, gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <PixelButton onClick={onQuit} color={PALETTE.dim} small style={{ padding: '6px 8px', fontSize: 9 }}>◀</PixelButton>
+        <HeartRow lives={lives} max={maxLives} />
+      </div>
+      <div style={{ fontFamily: PIX_FONT, fontSize: 9, color: PALETTE.yellow, textAlign: 'center' }}>
+        <div>SCORE {score}</div>
+        <div style={{ fontSize: 8, color: PALETTE.green }}>STREAK {streak}🔥</div>
+      </div>
+      <PixelButton onClick={onRef} color={PALETTE.cyan} small style={{ padding: '6px 8px', fontSize: 9 }}>📖</PixelButton>
+    </div>
+  );
+}
+
+// =================== BATTLE ARENA ===================
+const WORLD_PALETTES = {
+  ionic:    { primary: PALETTE.cyan,  monsters: ['#3ef0ff', '#5599ff', '#00d4d4', '#7ee0ff', '#3a8cff'] },
+  covalent: { primary: PALETTE.green, monsters: ['#3eff8a', '#aaff44', '#00cc77', '#88dd55', '#5fe0a8'] },
+  equation: { primary: PALETTE.pink,  monsters: ['#ff3ea5', '#ff5577', '#dd2299', '#aa44dd', '#ff7766'] },
+};
+
+const MONSTER_SHAPES = ['orb', 'cube', 'diamond', 'spike', 'jagged'];
+const MONSTER_EYES = ['normal', 'slit', 'cyclops', 'angry', 'triple'];
+
+function generateMonster(isBoss, palette, seed) {
+  // deterministic pick from seed
+  const pick = (arr, n) => arr[Math.abs((seed * 31 + n)) % arr.length];
+  if (isBoss) {
+    return {
+      type: pick(['jagged', 'spike', 'diamond'], 7),
+      eyes: 'triple',
+      color: palette.monsters[0],
+      isBoss: true,
+    };
+  }
+  return {
+    type: pick(MONSTER_SHAPES, 1),
+    eyes: pick(MONSTER_EYES, 2),
+    color: pick(palette.monsters, 3),
+    isBoss: false,
+  };
+}
+
+function Monster({ type = 'orb', eyes = 'normal', color, isBoss = false, phase, hidden }) {
+  if (hidden) return null;
+  const baseSize = isBoss ? 76 : 56;
+  const animation =
+    phase === 'hurt' ? 'monsterShake 0.4s' :
+    phase === 'victory' ? 'monsterDestroy 0.6s forwards' :
+    'monsterFloat 2.5s infinite';
+
+  // Shape rendering — clip-path shapes need drop-shadow filter (box-shadow doesn't follow clip)
+  let bodyStyle = {
+    width: baseSize, height: baseSize, background: color, position: 'relative',
+    border: `3px solid ${PALETTE.bg}`,
+    boxShadow: `0 0 ${isBoss ? 24 : 16}px ${color}, inset -8px -8px 0 rgba(0,0,0,.35)`,
+  };
+  let needsFilterShadow = false;
+
+  if (type === 'orb') {
+    bodyStyle.borderRadius = '50%';
+  } else if (type === 'cube') {
+    bodyStyle.borderRadius = 4;
+  } else if (type === 'diamond') {
+    bodyStyle.borderRadius = 4;
+    bodyStyle.transform = 'rotate(45deg)';
+  } else if (type === 'spike') {
+    bodyStyle.clipPath = 'polygon(50% 0%, 0% 100%, 100% 100%)';
+    bodyStyle.border = 'none';
+    bodyStyle.boxShadow = 'none';
+    needsFilterShadow = true;
+  } else if (type === 'jagged') {
+    bodyStyle.clipPath = 'polygon(50% 0%, 78% 12%, 100% 35%, 88% 65%, 100% 100%, 65% 88%, 35% 100%, 12% 80%, 0% 50%, 15% 22%, 30% 12%)';
+    bodyStyle.border = 'none';
+    bodyStyle.boxShadow = 'none';
+    needsFilterShadow = true;
+  }
+
+  // Eyes are positioned relative to monster body — use percentages for shape independence
+  const eyeBg = '#fff';
+  const pupilBg = PALETTE.bg;
+  const eyeRadius = type === 'orb' ? '50%' : 0;
+  const eyeY = type === 'spike' ? '52%' : (type === 'jagged' ? '36%' : '30%');
+
+  let eyeJSX;
+  if (eyes === 'cyclops') {
+    eyeJSX = (
+      <div style={{ position: 'absolute', top: eyeY, left: '50%', transform: 'translateX(-50%)',
+        width: '28%', height: '28%', background: eyeBg, border: `2px solid ${PALETTE.bg}`, borderRadius: eyeRadius }}>
+        <div style={{ position: 'absolute', bottom: '8%', left: '50%', transform: 'translateX(-50%)',
+          width: '40%', height: '50%', background: pupilBg, borderRadius: eyeRadius }} />
+      </div>
+    );
+  } else if (eyes === 'slit') {
+    eyeJSX = (<>
+      <div style={{ position: 'absolute', top: eyeY, left: '20%', width: '20%', height: '6%',
+        background: pupilBg, border: `1px solid #fff` }} />
+      <div style={{ position: 'absolute', top: eyeY, right: '20%', width: '20%', height: '6%',
+        background: pupilBg, border: `1px solid #fff` }} />
+    </>);
+  } else if (eyes === 'angry') {
+    eyeJSX = (<>
+      <div style={{ position: 'absolute', top: eyeY, left: '18%', width: '20%', height: '22%',
+        background: eyeBg, border: `2px solid ${PALETTE.bg}`, borderRadius: eyeRadius, transform: 'rotate(-15deg)' }}>
+        <div style={{ position: 'absolute', bottom: '10%', left: '15%', width: '40%', height: '40%', background: pupilBg, borderRadius: eyeRadius }} />
+      </div>
+      <div style={{ position: 'absolute', top: eyeY, right: '18%', width: '20%', height: '22%',
+        background: eyeBg, border: `2px solid ${PALETTE.bg}`, borderRadius: eyeRadius, transform: 'rotate(15deg)' }}>
+        <div style={{ position: 'absolute', bottom: '10%', right: '15%', width: '40%', height: '40%', background: pupilBg, borderRadius: eyeRadius }} />
+      </div>
+    </>);
+  } else if (eyes === 'triple') {
+    eyeJSX = (<>
+      <div style={{ position: 'absolute', top: '14%', left: '50%', transform: 'translateX(-50%)',
+        width: '18%', height: '20%', background: eyeBg, border: `2px solid ${PALETTE.bg}`, borderRadius: '50%' }}>
+        <div style={{ position: 'absolute', bottom: 1, left: '50%', transform: 'translateX(-50%)', width: 3, height: 5, background: pupilBg, borderRadius: '50%' }} />
+      </div>
+      <div style={{ position: 'absolute', top: '44%', left: '20%', width: '18%', height: '20%',
+        background: eyeBg, border: `2px solid ${PALETTE.bg}`, borderRadius: '50%' }}>
+        <div style={{ position: 'absolute', bottom: 1, left: '50%', transform: 'translateX(-50%)', width: 3, height: 5, background: pupilBg, borderRadius: '50%' }} />
+      </div>
+      <div style={{ position: 'absolute', top: '44%', right: '20%', width: '18%', height: '20%',
+        background: eyeBg, border: `2px solid ${PALETTE.bg}`, borderRadius: '50%' }}>
+        <div style={{ position: 'absolute', bottom: 1, left: '50%', transform: 'translateX(-50%)', width: 3, height: 5, background: pupilBg, borderRadius: '50%' }} />
+      </div>
+    </>);
+  } else {
+    eyeJSX = (<>
+      <div style={{ position: 'absolute', top: eyeY, left: '18%', width: '20%', height: '22%',
+        background: eyeBg, border: `2px solid ${PALETTE.bg}`, borderRadius: eyeRadius }}>
+        <div style={{ position: 'absolute', bottom: 1, left: 1, width: 4, height: 6, background: pupilBg }} />
+      </div>
+      <div style={{ position: 'absolute', top: eyeY, right: '18%', width: '20%', height: '22%',
+        background: eyeBg, border: `2px solid ${PALETTE.bg}`, borderRadius: eyeRadius }}>
+        <div style={{ position: 'absolute', bottom: 1, left: 1, width: 4, height: 6, background: pupilBg }} />
+      </div>
+    </>);
+  }
+
+  const mouth = type !== 'spike' ? (
+    <div style={{ position: 'absolute', bottom: type === 'jagged' ? '20%' : '15%', left: '50%',
+      transform: 'translateX(-50%)', width: '32%', height: '10%',
+      background: PALETTE.bg, borderTop: `2px solid #fff` }} />
+  ) : null;
+
+  return (
+    <div style={{ position: 'relative', display: 'inline-block',
+      animation, filter: needsFilterShadow ? `drop-shadow(0 0 ${isBoss ? 12 : 8}px ${color})` : 'none' }}>
+      {/* Q mark or BOSS label */}
+      {!isBoss ? (
+        <div style={{ position: 'absolute', top: -22, left: '50%', transform: 'translateX(-50%)',
+          fontFamily: PIX_FONT, fontSize: 14, color: PALETTE.yellow,
+          textShadow: `0 0 6px ${PALETTE.yellow}`, zIndex: 2 }}>?</div>
+      ) : (
+        <div style={{ position: 'absolute', top: -28, left: '50%', transform: 'translateX(-50%)',
+          background: PALETTE.red, color: '#fff', padding: '3px 10px', fontFamily: PIX_FONT, fontSize: 9,
+          border: `2px solid ${PALETTE.bg}`, whiteSpace: 'nowrap', zIndex: 2,
+          boxShadow: `0 0 8px ${PALETTE.red}`, letterSpacing: 1 }}>BOSS</div>
+      )}
+      {/* Boss spikes/horns */}
+      {isBoss && [0.2, 0.5, 0.8].map(p => (
+        <div key={p} style={{
+          position: 'absolute', top: -6, left: `${p * 100}%`, transform: 'translateX(-50%)',
+          width: 0, height: 0, borderLeft: '6px solid transparent', borderRight: '6px solid transparent',
+          borderBottom: `14px solid ${color}`, zIndex: 1,
+          filter: `drop-shadow(0 0 4px ${color})`,
+        }} />
+      ))}
+      <div style={bodyStyle}>
+        {/* Counter-rotate inner content for diamond */}
+        <div style={type === 'diamond' ? { transform: 'rotate(-45deg)', width: '100%', height: '100%' } : { width: '100%', height: '100%' }}>
+          {eyeJSX}
+          {mouth}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =================== ATTACK EFFECTS ===================
+function Slash() {
+  return (
+    <div style={{
+      position: 'absolute', bottom: 50, left: '36%', width: 96, height: 5,
+      background: PALETTE.yellow, boxShadow: `0 0 12px ${PALETTE.yellow}, 0 0 24px ${PALETTE.yellow}`,
+      animation: 'slashEffect 0.5s forwards',
+      transformOrigin: 'left center', transform: 'rotate(-25deg) scaleX(0)',
+    }} />
+  );
+}
+
+function DoubleSlash() {
+  return (<>
+    <div style={{
+      position: 'absolute', bottom: 56, left: '36%', width: 96, height: 5,
+      background: PALETTE.yellow, boxShadow: `0 0 12px ${PALETTE.yellow}`,
+      animation: 'slashEffect 0.4s forwards',
+      transformOrigin: 'left center', transform: 'rotate(-25deg) scaleX(0)',
+    }} />
+    <div style={{
+      position: 'absolute', bottom: 44, left: '36%', width: 96, height: 5,
+      background: '#ff8844', boxShadow: `0 0 12px #ff8844`,
+      animation: 'slashEffect 0.4s 120ms forwards',
+      transformOrigin: 'left center', transform: 'rotate(25deg) scaleX(0)',
+    }} />
+  </>);
+}
+
+function Fireball({ size = 22, color1 = '#ffdd44', color2 = '#ff5500', color3 = '#aa1100', glow = '#ff7700', duration = 0.6 }) {
+  return (
+    <div style={{
+      position: 'absolute', bottom: 56, left: '20%',
+      width: size, height: size,
+      background: `radial-gradient(circle, ${color1} 0%, ${color2} 60%, ${color3} 100%)`,
+      borderRadius: '50%',
+      boxShadow: `0 0 18px ${glow}, 0 0 36px ${glow}`,
+      animation: `fireballFly ${duration}s forwards`,
+    }} />
+  );
+}
+
+function Beam({ color, thickness = 6 }) {
+  return (
+    <div style={{
+      position: 'absolute', bottom: 58, left: '24%', right: '26%',
+      height: thickness, background: color,
+      boxShadow: `0 0 16px ${color}, 0 0 32px ${color}`,
+      animation: 'beamPulse 0.7s forwards',
+      transformOrigin: 'left center', transform: 'scaleX(0)',
+    }} />
+  );
+}
+
+function SuperFireball() {
+  return (
+    <div style={{ position: 'absolute', bottom: 50, left: '20%', animation: 'fireballFly 0.7s forwards' }}>
+      <div style={{ position: 'relative', width: 36, height: 36 }}>
+        <div style={{
+          width: 36, height: 36,
+          background: `radial-gradient(circle, #fff 0%, #ffdd44 30%, #ff5500 70%, #aa1100 100%)`,
+          borderRadius: '50%',
+          boxShadow: `0 0 30px #ff7700, 0 0 60px #ff5500`,
+        }} />
+        {[0, 90, 180, 270].map(deg => (
+          <div key={deg} style={{
+            position: 'absolute', top: 12, left: 12, width: 12, height: 12,
+            background: '#ff8800', borderRadius: '50%',
+            boxShadow: '0 0 8px #ffaa00',
+            transformOrigin: '50% 50%',
+            animation: `superFireSpin 0.5s linear infinite`,
+            transform: `rotate(${deg}deg) translateX(26px)`,
+          }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Meteor() {
+  return (<>
+    <div style={{
+      position: 'absolute', top: -50, right: 'calc(22% - 4px)',
+      width: 32, height: 32,
+      background: `radial-gradient(circle, #ffdd66 0%, #ff5500 60%, #882200 100%)`,
+      borderRadius: '50%',
+      boxShadow: `0 0 24px #ff8800, 0 0 48px #ff5500`,
+      animation: 'meteorFall 0.7s forwards',
+    }}>
+      <div style={{
+        position: 'absolute', top: -60, left: 6, width: 20, height: 70,
+        background: 'linear-gradient(to top, rgba(255,150,30,0.85), transparent)',
+        filter: 'blur(2px)',
+      }} />
+    </div>
+    {/* Shockwave at impact */}
+    <div style={{
+      position: 'absolute', bottom: 30, right: 'calc(22% - 8px)',
+      width: 80, height: 80, borderRadius: '50%',
+      border: '4px solid #ff8800',
+      animation: 'shockwave 0.6s 0.5s forwards',
+      opacity: 0,
+    }} />
+  </>);
+}
+
+function AttackEffect({ tier }) {
+  if (tier === 0) return <Slash />;
+  if (tier === 1) return <DoubleSlash />;
+  if (tier === 2) return <Fireball />;
+  if (tier === 3) return <Beam color="#3ef0ff" thickness={6} />;
+  if (tier === 4) return <Beam color="#ff3030" thickness={10} />;
+  if (tier === 5) return <SuperFireball />;
+  if (tier === 6) return <Meteor />;
+  return null; // tier 7 handled by UltimateSequence
+}
+
+// =================== ULTIMATE SEQUENCE (Tier 7) ===================
+function UltimateSequence({ char, monster, accentColor }) {
+  const [stage, setStage] = useState(0);
+  // 0: teleport flash (300ms)
+  // 1: black + shake (1500ms)
+  // 2: reveal — char on right, monster cut in 4 (400ms hold)
+  // 3: pieces fly + disintegrate (1000ms)
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setStage(1), 300);
+    const t2 = setTimeout(() => setStage(2), 1800);
+    const t3 = setTimeout(() => setStage(3), 2200);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, []);
+
+  const monsterColor = monster?.color || accentColor;
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+      {/* Stage 0: char teleporting out at original position */}
+      {stage === 0 && (
+        <div style={{
+          position: 'absolute', bottom: 12, left: '12%',
+          animation: 'teleportOut 0.3s forwards',
+        }}>
+          <Sprite char={char} expression="thrilled" size={64} />
+        </div>
+      )}
+
+      {/* Black overlay with shake */}
+      {stage === 1 && (<>
+        <div style={{
+          position: 'absolute', inset: 0, background: '#000', zIndex: 5,
+          animation: 'screenShake 0.12s linear infinite',
+        }} />
+        {/* Streak lines flickering across */}
+        {[0, 1, 2, 3].map(i => (
+          <div key={i} style={{
+            position: 'absolute', left: 0, right: 0,
+            top: `${20 + i * 18}%`, height: 1, background: '#fff',
+            opacity: 0.3, zIndex: 6,
+            animation: `streakFlash 0.3s ${i * 80}ms infinite`,
+          }} />
+        ))}
+      </>)}
+
+      {/* Stage 2+: char appears on right with sword sheathing */}
+      {stage >= 2 && (
+        <div style={{ position: 'absolute', bottom: 12, right: '10%', zIndex: 4 }}>
+          <Sprite char={char} expression="thrilled" size={64} />
+          {/* sword animation - line that "slides into" sheath */}
+          <div style={{
+            position: 'absolute', top: 16, right: 50,
+            width: 40, height: 4, background: '#e8e8ff',
+            boxShadow: `0 0 8px #fff, 0 0 16px ${accentColor}`,
+            animation: stage === 2 ? 'swordSheath 0.6s forwards' : 'none',
+            opacity: stage === 3 ? 0 : 1,
+          }} />
+        </div>
+      )}
+
+      {/* Stage 2+: monster sliced into 4 pieces */}
+      {stage >= 2 && monster && (
+        <div style={{ position: 'absolute', bottom: 30, right: '24%', width: 76, height: 76 }}>
+          {[
+            { dx: -1, dy: -1, clip: 'polygon(0 0, 50% 0, 50% 50%, 0 50%)' },
+            { dx: 1, dy: -1, clip: 'polygon(50% 0, 100% 0, 100% 50%, 50% 50%)' },
+            { dx: -1, dy: 1, clip: 'polygon(0 50%, 50% 50%, 50% 100%, 0 100%)' },
+            { dx: 1, dy: 1, clip: 'polygon(50% 50%, 100% 50%, 100% 100%, 50% 100%)' },
+          ].map((piece, i) => (
+            <div key={i} style={{
+              position: 'absolute', inset: 0,
+              clipPath: piece.clip,
+              animation: stage === 3 ? `cutFly 1s forwards` : 'none',
+              '--dx': `${piece.dx * 50}px`,
+              '--dy': `${piece.dy * 30 - 10}px`,
+              '--rot': `${piece.dx * 90}deg`,
+            }}>
+              <div style={{
+                width: '100%', height: '100%',
+                background: monsterColor,
+                border: `3px solid ${PALETTE.bg}`,
+                boxShadow: `0 0 12px ${monsterColor}`,
+              }} />
             </div>
-            <div class="reaction-bolt">=</div>
-            <div class="flask flask-right">
-              <span></span>
+          ))}
+          {/* Cut lines (cross shape) */}
+          {stage === 2 && (<>
+            <div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', width: 2,
+              background: '#fff', boxShadow: `0 0 8px #fff`,
+              animation: 'cutLineFlash 0.4s forwards' }} />
+            <div style={{ position: 'absolute', left: 0, right: 0, top: '50%', height: 2,
+              background: '#fff', boxShadow: `0 0 8px #fff`,
+              animation: 'cutLineFlash 0.4s forwards' }} />
+          </>)}
+        </div>
+      )}
+
+      {/* Ultimate label */}
+      {stage >= 1 && stage <= 2 && (
+        <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)',
+          color: PALETTE.yellow, fontFamily: PIX_FONT, fontSize: 14,
+          textShadow: `0 0 12px ${PALETTE.yellow}, 0 0 24px ${PALETTE.red}`,
+          letterSpacing: 2, zIndex: 10,
+          animation: 'ultimateLabel 0.5s forwards',
+        }}>★ ULTIMATE ★</div>
+      )}
+    </div>
+  );
+}
+
+function BattleScene({ char, phase, monster, attackTier = 0, accentColor = PALETTE.cyan }) {
+  // For tier 7 + correct, the entire sequence is dramatized differently
+  const inUltimate = attackTier === 7 && (phase === 'attacking' || phase === 'victory');
+
+  const expression =
+    phase === 'victory' || phase === 'attacking' ? 'thrilled' :
+    phase === 'hurt' ? 'sad' : 'happy';
+
+  const charAnim =
+    phase === 'walking' ? 'walkIn 0.6s ease-out forwards, walkBounce 0.4s 0.6s infinite' :
+    phase === 'attacking' ? 'attackLunge 0.6s forwards' :
+    phase === 'victory' ? 'walkAway 0.7s 0.4s forwards, walkBounce 0.4s infinite' :
+    phase === 'hurt' ? 'hurtBounce 0.6s forwards' :
+    'walkBounce 0.5s infinite';
+
+  return (
+    <div style={{
+      position: 'relative', height: 150, marginTop: 12,
+      background: `linear-gradient(180deg, ${PALETTE.bg} 0%, ${PALETTE.bg2} 100%)`,
+      border: `3px solid ${PALETTE.bg}`, overflow: 'hidden',
+    }}>
+      {/* Stars */}
+      {[7, 23, 41, 58, 71, 88, 14, 32, 49, 66, 83, 96, 19, 36, 53, 78].map((x, i) => (
+        <div key={i} style={{
+          position: 'absolute', left: `${x}%`, top: `${(i * 13) % 65 + 5}%`,
+          width: 2, height: 2, background: '#fff', opacity: 0.4,
+        }} />
+      ))}
+
+      {/* Ground */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0, height: 14,
+        background: `repeating-linear-gradient(90deg, ${PALETTE.dim} 0 8px, transparent 8px 16px)`,
+        borderTop: `2px solid ${accentColor}`,
+        boxShadow: `0 -2px 8px ${accentColor}`,
+      }} />
+
+      {/* Normal scene (hidden during ultimate) */}
+      {!inUltimate && (<>
+        {/* Character */}
+        <div key={phase} style={{
+          position: 'absolute', bottom: 12, left: '12%',
+          animation: charAnim,
+        }}>
+          <Sprite char={char} expression={expression} size={64} />
+        </div>
+
+        {/* Monster */}
+        {phase !== 'victory' && monster && (
+          <div style={{ position: 'absolute', bottom: 30, right: '22%' }}>
+            <Monster {...monster} phase={phase} />
+          </div>
+        )}
+
+        {/* Attack effect during attack phase */}
+        {phase === 'attacking' && <AttackEffect tier={attackTier} />}
+
+        {/* Particle burst on victory */}
+        {phase === 'victory' && monster && (
+          <div style={{ position: 'absolute', bottom: 56, right: 'calc(22% + 28px)', width: 0, height: 0 }}>
+            {[0, 45, 90, 135, 180, 225, 270, 315].map(deg => (
+              <div key={deg} style={{
+                position: 'absolute', width: 8, height: 8, background: monster.color,
+                boxShadow: `0 0 8px ${monster.color}`,
+                animation: 'particleBurst 0.7s forwards',
+                transformOrigin: '0 0', transform: `rotate(${deg}deg) translateX(0)`,
+                '--deg': `${deg}deg`,
+              }} />
+            ))}
+          </div>
+        )}
+      </>)}
+
+      {/* Ultimate sequence overlay */}
+      {inUltimate && (
+        <UltimateSequence char={char} monster={monster} accentColor={accentColor} />
+      )}
+    </div>
+  );
+}
+
+function useArenaPhase(qi, feedback, attackTier) {
+  const [phase, setPhase] = useState('walking');
+  useEffect(() => {
+    setPhase('walking');
+    const t = setTimeout(() => setPhase('idle'), 700);
+    return () => clearTimeout(t);
+  }, [qi]);
+  useEffect(() => {
+    if (!feedback) return;
+    setPhase('attacking');
+    // Tier 7 needs longer attacking phase since the teleport happens during attack
+    const attackDuration = attackTier === 7 ? 300 : 500;
+    const t = setTimeout(() => {
+      setPhase(feedback.type === 'correct' ? 'victory' : 'hurt');
+    }, attackDuration);
+    return () => clearTimeout(t);
+  }, [feedback, attackTier]);
+  return phase;
+}
+
+// =================== IONIC GAME ===================
+function IonicGame({ char, level, onWin, onQuit, refOpen, setRefOpen }) {
+  const pool = [IONIC.binary, IONIC.transition, IONIC.polyatomic][level];
+  const startLives = char.charClass === 'strategist' ? 4 : 3;
+  const [questions] = useState(() => shuffle(pool).slice(0, Math.min(8, pool.length)));
+  const [qi, setQi] = useState(0);
+  const [lives, setLives] = useState(startLives);
+  const [score, setScore] = useState(0);
+  const [streak, setStreak] = useState(0);
+  const [feedback, setFeedback] = useState(null);
+  const [picked, setPicked] = useState({ cat: null, an: null });
+  const [eliminated, setEliminated] = useState(null);
+  const [attackTier, setAttackTier] = useState(0);
+
+  const q = questions[qi];
+  const arenaPhase = useArenaPhase(qi, feedback, attackTier);
+  // alternate build / name modes
+  const mode = qi % 2 === 0 ? 'build' : 'name';
+
+  // Generate a monster per question (last question is the boss)
+  const monsters = React.useMemo(() =>
+    questions.map((_, i) => generateMonster(i === questions.length - 1, WORLD_PALETTES.ionic, i + level * 100))
+  , [questions, level]);
+  const monster = monsters[qi];
+
+  // Build distractors for "name it"
+  const nameOptions = React.useMemo(() => {
+    if (!q) return [];
+    const others = pool.filter(x => x.n !== q.n);
+    const distractors = shuffle(others).slice(0, 3).map(o => o.n);
+    return shuffle([q.n, ...distractors]);
+  }, [qi]);
+
+  // Build "Build it" tile pool — guarantee correct cat/an are included
+  const tilePool = React.useMemo(() => {
+    if (!q) return { cats: [], ans: [] };
+    const otherCats = [...new Set(pool.filter(o => o.cat.sym !== q.cat.sym).map(o => o.cat.sym))];
+    const otherAns = [...new Set(pool.filter(o => o.an.sym !== q.an.sym).map(o => o.an.sym))];
+    const cats = shuffle([q.cat.sym, ...shuffle(otherCats).slice(0, 3)]);
+    const ans = shuffle([q.an.sym, ...shuffle(otherAns).slice(0, 3)]);
+    return { cats, ans };
+  }, [qi]);
+
+  // Scholar perk: eliminate a wrong option in name mode
+  useEffect(() => {
+    if (mode === 'name' && char.charClass === 'scholar') {
+      const wrongs = nameOptions.filter(o => o !== q.n);
+      setEliminated(wrongs[0]);
+    } else {
+      setEliminated(null);
+    }
+    setPicked({ cat: null, an: null });
+    setFeedback(null);
+  }, [qi]);
+
+  if (!q) return null;
+
+  const handleAnswer = (correct) => {
+    setAttackTier(Math.min(streak, 7));
+    if (correct) {
+      let pts = 100 + streak * 10;
+      if (mode === 'build' && char.charClass === 'alchemist') pts = Math.round(pts * 1.1);
+      if (mode === 'name' && char.charClass === 'scholar') pts = Math.round(pts * 1.1);
+      setScore(s => s + pts);
+      setStreak(s => s + 1);
+      setFeedback({ type: 'correct', pts });
+    } else {
+      setLives(l => l - 1);
+      setStreak(0);
+      setFeedback({ type: 'wrong', answer: q.n });
+    }
+  };
+
+  const next = () => {
+    if (lives <= 0) { onWin({ won: false, score, streak }); return; }
+    if (qi + 1 >= questions.length) {
+      onWin({ won: true, score, streak });
+    } else {
+      setQi(qi + 1);
+      setFeedback(null);
+    }
+  };
+
+  const handleBuildSubmit = () => {
+    if (!picked.cat || !picked.an) return;
+    handleAnswer(picked.cat === q.cat.sym && picked.an === q.an.sym);
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', padding: 10, paddingBottom: 80 }}>
+      <GameHud char={char} lives={lives} maxLives={startLives} score={score} streak={streak}
+        onQuit={() => onWin({ won: false, score, streak, quit: true })}
+        onRef={() => setRefOpen(true)} />
+
+      <PixelPanel style={{ marginBottom: 10, background: PALETTE.bg2 }}>
+        <div style={{ fontSize: 9, color: PALETTE.cyan, marginBottom: 8 }}>
+          Q{qi + 1}/{questions.length} · {mode === 'build' ? '🛠️ BUILD IT' : '📛 NAME IT'}
+        </div>
+        {mode === 'build' ? (
+          <div>
+            <div style={{ fontSize: 9, color: PALETTE.dim, marginBottom: 4 }}>Build the formula for:</div>
+            <NeonText color={PALETTE.yellow} size={18}>{q.n}</NeonText>
+            {q.roman && <div style={{ fontSize: 9, color: PALETTE.pink, marginTop: 4 }}>(Roman numeral = charge)</div>}
+          </div>
+        ) : (
+          <div>
+            <div style={{ fontSize: 9, color: PALETTE.dim, marginBottom: 4 }}>What is the name of:</div>
+            <NeonText color={PALETTE.yellow} size={28}>{q.f}</NeonText>
+          </div>
+        )}
+      </PixelPanel>
+
+      {!feedback && mode === 'build' && (
+        <div>
+          <div style={{ fontSize: 9, color: PALETTE.cyan, marginBottom: 6 }}>CATIONS (+)</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+            {tilePool.cats.map(c => {
+              const isCorrect = c === q.cat.sym;
+              const showCharge = char.charClass === 'alchemist';
+              const ch = isCorrect ? q.cat.ch : 0;
+              return (
+                <button key={c} onClick={() => setPicked(p => ({ ...p, cat: c }))}
+                  style={{
+                    padding: 10, minWidth: 50, fontFamily: PIX_FONT, fontSize: 11,
+                    background: picked.cat === c ? PALETTE.green : PALETTE.panel,
+                    color: picked.cat === c ? PALETTE.bg : PALETTE.ink,
+                    border: `3px solid ${PALETTE.bg}`, cursor: 'pointer',
+                  }}>
+                  {c}{showCharge && isCorrect ? <sup style={{ color: PALETTE.yellow }}>+{ch}</sup> : ''}
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{ fontSize: 9, color: PALETTE.cyan, marginBottom: 6 }}>ANIONS (−)</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+            {tilePool.ans.map(a => {
+              const isCorrect = a === q.an.sym;
+              const showCharge = char.charClass === 'alchemist';
+              const ch = isCorrect ? q.an.ch : 0;
+              return (
+                <button key={a} onClick={() => setPicked(p => ({ ...p, an: a }))}
+                  style={{
+                    padding: 10, minWidth: 50, fontFamily: PIX_FONT, fontSize: 11,
+                    background: picked.an === a ? PALETTE.cyan : PALETTE.panel,
+                    color: picked.an === a ? PALETTE.bg : PALETTE.ink,
+                    border: `3px solid ${PALETTE.bg}`, cursor: 'pointer',
+                  }}>
+                  {a}{showCharge && isCorrect ? <sup style={{ color: PALETTE.yellow }}>{ch}</sup> : ''}
+                </button>
+              );
+            })}
+          </div>
+
+          <PixelButton onClick={handleBuildSubmit} disabled={!picked.cat || !picked.an} color={PALETTE.pink} full>
+            Submit
+          </PixelButton>
+        </div>
+      )}
+
+      {!feedback && mode === 'name' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {nameOptions.map(opt => (
+            <button key={opt} onClick={() => handleAnswer(opt === q.n)} disabled={opt === eliminated}
+              style={{
+                padding: 14, fontFamily: PIX_FONT, fontSize: 11,
+                background: opt === eliminated ? PALETTE.dim : PALETTE.panel,
+                color: PALETTE.ink, border: `3px solid ${PALETTE.bg}`, cursor: opt === eliminated ? 'not-allowed' : 'pointer',
+                textAlign: 'left', textDecoration: opt === eliminated ? 'line-through' : 'none',
+                opacity: opt === eliminated ? 0.4 : 1,
+              }}>
+              {opt}{opt === eliminated && ' (eliminated)'}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {feedback && (
+        <PixelPanel style={{ background: feedback.type === 'correct' ? PALETTE.green : PALETTE.red,
+          color: PALETTE.bg, marginTop: 10, textAlign: 'center' }}>
+          <div style={{ fontSize: 16, marginBottom: 8 }}>
+            {feedback.type === 'correct' ? `✓ +${feedback.pts}` : '✗ INCORRECT'}
+          </div>
+          {feedback.type === 'correct' ? (
+            <div style={{ fontSize: 9 }}>{q.f} = {q.n}</div>
+          ) : (
+            <div style={{ fontSize: 9 }}>Answer: {q.n} ({q.f})</div>
+          )}
+          <div style={{ marginTop: 12 }}>
+            <PixelButton onClick={next} color={PALETTE.bg} small style={{ color: PALETTE.ink, background: PALETTE.bg }}>
+              {qi + 1 >= questions.length || lives === 0 ? 'Finish' : 'Next ▶'}
+            </PixelButton>
+          </div>
+        </PixelPanel>
+      )}
+
+      <BattleScene char={char} phase={arenaPhase} monster={monster} attackTier={attackTier} accentColor={PALETTE.cyan} />
+    </div>
+  );
+}
+
+// =================== COVALENT GAME ===================
+function CovalentGame({ char, level, onWin, setRefOpen }) {
+  const startLives = char.charClass === 'strategist' ? 4 : 3;
+  const [questions] = useState(() => shuffle(COVALENT).slice(0, 8));
+  const [qi, setQi] = useState(0);
+  const [lives, setLives] = useState(startLives);
+  const [score, setScore] = useState(0);
+  const [streak, setStreak] = useState(0);
+  const [feedback, setFeedback] = useState(null);
+  const [eliminated, setEliminated] = useState(null);
+  const [attackTier, setAttackTier] = useState(0);
+
+  const q = questions[qi];
+  const arenaPhase = useArenaPhase(qi, feedback, attackTier);
+
+  const monsters = React.useMemo(() =>
+    questions.map((_, i) => generateMonster(i === questions.length - 1, WORLD_PALETTES.covalent, i + level * 200))
+  , [questions, level]);
+  const monster = monsters[qi];
+
+  // Build correct name
+  const buildName = (e1, c1, e2, c2) => {
+    const p1 = c1 === 1 ? '' : PREFIXES[c1 - 1] + '';
+    const p2 = PREFIXES[c2 - 1];
+    const root1 = FIRST_NAMES[e1] || e1;
+    const root2 = ELEMENT_SUFFIX[e2] || e2;
+    // contraction: a-o → o, e-o → o; tetra-oxide stays "tetroxide" (we keep simple)
+    let prefix2 = p2;
+    let root2Final = root2;
+    if ((p2.endsWith('a') || p2.endsWith('o')) && /^[oa]/i.test(root2)) {
+      prefix2 = p2.slice(0, -1);
+    }
+    return `${p1 ? p1 : ''}${root1} ${prefix2}${root2Final}`.replace(/\s+/g, ' ').trim();
+  };
+
+  const correctName = q ? buildName(q.e1, q.c1, q.e2, q.c2) : '';
+
+  // Build distractors
+  const nameOptions = React.useMemo(() => {
+    if (!q) return [];
+    const others = shuffle(COVALENT.filter(x => x.f !== q.f)).slice(0, 3)
+      .map(o => buildName(o.e1, o.c1, o.e2, o.c2));
+    return shuffle([correctName, ...others]);
+  }, [qi]);
+
+  useEffect(() => {
+    if (char.charClass === 'scholar') {
+      const wrongs = nameOptions.filter(o => o !== correctName);
+      setEliminated(wrongs[0]);
+    } else {
+      setEliminated(null);
+    }
+    setFeedback(null);
+  }, [qi]);
+
+  if (!q) return null;
+
+  const mode = level === 0 ? 'fname' : 'nformula'; // formula→name, or name→formula
+
+  const handleAnswer = (correct) => {
+    setAttackTier(Math.min(streak, 7));
+    if (correct) {
+      let pts = 100 + streak * 10;
+      if (char.charClass === 'scholar') pts = Math.round(pts * 1.1);
+      setScore(s => s + pts);
+      setStreak(s => s + 1);
+      setFeedback({ type: 'correct', pts });
+    } else {
+      setLives(l => l - 1);
+      setStreak(0);
+      setFeedback({ type: 'wrong' });
+    }
+  };
+
+  const next = () => {
+    if (lives <= 0) { onWin({ won: false, score, streak }); return; }
+    if (qi + 1 >= questions.length) {
+      onWin({ won: true, score, streak });
+    } else {
+      setQi(qi + 1);
+    }
+  };
+
+  // For name→formula mode
+  const [c1Pick, setC1Pick] = useState(1);
+  const [c2Pick, setC2Pick] = useState(1);
+  useEffect(() => { setC1Pick(1); setC2Pick(1); }, [qi]);
+
+  return (
+    <div style={{ minHeight: '100vh', padding: 10, paddingBottom: 80 }}>
+      <GameHud char={char} lives={lives} maxLives={startLives} score={score} streak={streak}
+        onQuit={() => onWin({ won: false, score, streak, quit: true })}
+        onRef={() => setRefOpen(true)} />
+
+      <PixelPanel style={{ marginBottom: 10, background: PALETTE.bg2 }}>
+        <div style={{ fontSize: 9, color: PALETTE.cyan, marginBottom: 8 }}>
+          Q{qi + 1}/{questions.length} · {mode === 'fname' ? '🔤 NAME THE FORMULA' : '🧪 BUILD THE FORMULA'}
+        </div>
+        {mode === 'fname' ? (
+          <NeonText color={PALETTE.yellow} size={28}>{q.f}</NeonText>
+        ) : (
+          <NeonText color={PALETTE.yellow} size={16}>{correctName}</NeonText>
+        )}
+      </PixelPanel>
+
+      {!feedback && mode === 'fname' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {nameOptions.map(opt => (
+            <button key={opt} onClick={() => handleAnswer(opt === correctName)} disabled={opt === eliminated}
+              style={{
+                padding: 14, fontFamily: PIX_FONT, fontSize: 10,
+                background: opt === eliminated ? PALETTE.dim : PALETTE.panel,
+                color: PALETTE.ink, border: `3px solid ${PALETTE.bg}`, cursor: opt === eliminated ? 'not-allowed' : 'pointer',
+                textAlign: 'left', opacity: opt === eliminated ? 0.4 : 1,
+              }}>
+              {opt}{opt === eliminated && ' ✗'}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!feedback && mode === 'nformula' && (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 14 }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: PIX_FONT, fontSize: 24, color: PALETTE.ink }}>
+                {q.e1}<sub>{c1Pick === 1 ? '' : c1Pick}</sub>{q.e2}<sub>{c2Pick === 1 ? '' : c2Pick}</sub>
+              </div>
             </div>
           </div>
-        </section>
-
-        <section class="equation-card">
-          <div class="equation-toolbar">
-            <div>
-              <p class="section-kicker">Current equation</p>
-              <p id="reactionType" class="reaction-type">Reaction type</p>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 14 }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 9, color: PALETTE.cyan, marginBottom: 4 }}>{q.e1} count</div>
+              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                <PixelButton onClick={() => setC1Pick(Math.max(1, c1Pick - 1))} small color={PALETTE.dim} style={{ padding: '6px 10px' }}>−</PixelButton>
+                <span style={{ fontFamily: PIX_FONT, fontSize: 16, color: PALETTE.yellow, minWidth: 24, textAlign: 'center' }}>{c1Pick}</span>
+                <PixelButton onClick={() => setC1Pick(c1Pick + 1)} small color={PALETTE.green} style={{ padding: '6px 10px' }}>+</PixelButton>
+              </div>
             </div>
-          <div class="toolbar-actions">
-              <button id="shuffleButton" class="text-button" type="button">New random run</button>
-              <button id="hintButton" class="icon-button" type="button" aria-label="Show a hint" title="Show a hint">
-                ?
-              </button>
-              <button id="resetButton" class="icon-button" type="button" aria-label="Reset coefficients" title="Reset">
-                ↺
-              </button>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 9, color: PALETTE.cyan, marginBottom: 4 }}>{q.e2} count</div>
+              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                <PixelButton onClick={() => setC2Pick(Math.max(1, c2Pick - 1))} small color={PALETTE.dim} style={{ padding: '6px 10px' }}>−</PixelButton>
+                <span style={{ fontFamily: PIX_FONT, fontSize: 16, color: PALETTE.yellow, minWidth: 24, textAlign: 'center' }}>{c2Pick}</span>
+                <PixelButton onClick={() => setC2Pick(c2Pick + 1)} small color={PALETTE.green} style={{ padding: '6px 10px' }}>+</PixelButton>
+              </div>
             </div>
           </div>
+          <PixelButton onClick={() => handleAnswer(c1Pick === q.c1 && c2Pick === q.c2)} color={PALETTE.pink} full>Submit</PixelButton>
+        </div>
+      )}
 
-          <form id="equationForm" class="equation-form" autocomplete="off">
-            <div id="reactants" class="formula-side" aria-label="Reactants"></div>
-            <div class="arrow" aria-hidden="true">→</div>
-            <div id="products" class="formula-side" aria-label="Products"></div>
-          </form>
-
-          <div class="action-row">
-            <button id="checkButton" class="primary-button" type="button">Check balance</button>
-            <button id="nextButton" class="secondary-button" type="button" disabled>Next mission</button>
+      {feedback && (
+        <PixelPanel style={{ background: feedback.type === 'correct' ? PALETTE.green : PALETTE.red,
+          color: PALETTE.bg, marginTop: 10, textAlign: 'center' }}>
+          <div style={{ fontSize: 16, marginBottom: 8 }}>{feedback.type === 'correct' ? `✓ +${feedback.pts}` : '✗ INCORRECT'}</div>
+          <div style={{ fontSize: 9 }}>{q.f} = {correctName}</div>
+          <div style={{ marginTop: 12 }}>
+            <PixelButton onClick={next} color={PALETTE.bg} small style={{ background: PALETTE.bg, color: PALETTE.ink }}>
+              {qi + 1 >= questions.length || lives === 0 ? 'Finish' : 'Next ▶'}
+            </PixelButton>
           </div>
-        </section>
+        </PixelPanel>
+      )}
 
-        <section class="feedback-grid">
-          <article class="feedback-panel">
-            <div class="panel-heading">
-              <h3>Atom scoreboard</h3>
-              <span id="balanceStatus" class="status-pill">Ready</span>
-            </div>
-            <div id="atomTable" class="atom-table"></div>
-          </article>
+      <BattleScene char={char} phase={arenaPhase} monster={monster} attackTier={attackTier} accentColor={PALETTE.green} />
+    </div>
+  );
+}
 
-          <article class="feedback-panel">
-            <div class="panel-heading">
-              <h3>Coach notes</h3>
-              <span id="attemptCount" class="status-pill neutral">0 tries</span>
-            </div>
-            <div id="coachNotes" class="coach-notes">
-              Start with the element that appears in the fewest formulas, then leave oxygen and hydrogen until later.
-            </div>
-          </article>
-        </section>
-      </section>
+// =================== EQUATION GAME ===================
+function EquationGame({ char, level, onWin, setRefOpen }) {
+  const startLives = char.charClass === 'strategist' ? 4 : 3;
+  const pool = [EQUATIONS.synthesis, EQUATIONS.decomposition, EQUATIONS.single, EQUATIONS.double, EQUATIONS.combustion][level];
+  const [questions] = useState(() => shuffle(pool).slice(0, Math.min(4, pool.length)));
+  const [qi, setQi] = useState(0);
+  const [lives, setLives] = useState(startLives);
+  const [score, setScore] = useState(0);
+  const [streak, setStreak] = useState(0);
+  const [feedback, setFeedback] = useState(null);
+  const [coefs, setCoefs] = useState({ r: [], p: [] });
+  const [attempts, setAttempts] = useState(0);
+  const [attackTier, setAttackTier] = useState(0);
 
-      <aside class="sidebar" aria-label="Learning and progression">
-        <section class="side-section">
-          <div class="panel-heading">
-            <h2>Mission Map</h2>
-            <span id="completedCount" class="status-pill neutral">0/0</span>
+  const q = questions[qi];
+  const arenaPhase = useArenaPhase(qi, feedback, attackTier);
+
+  const monsters = React.useMemo(() =>
+    questions.map((_, i) => generateMonster(i === questions.length - 1, WORLD_PALETTES.equation, i + level * 300))
+  , [questions, level]);
+  const monster = monsters[qi];
+
+  useEffect(() => {
+    if (q) {
+      setCoefs({ r: q.r.map(() => 1), p: q.p.map(() => 1) });
+      setFeedback(null);
+      setAttempts(0);
+    }
+  }, [qi]);
+
+  if (!q) return null;
+
+  const reactantsState = q.r.map((m, i) => ({ ...m, c: coefs.r[i] || 1 }));
+  const productsState = q.p.map((m, i) => ({ ...m, c: coefs.p[i] || 1 }));
+  const balanced = isBalanced(reactantsState, productsState);
+  const rCounts = atomCount(reactantsState);
+  const pCounts = atomCount(productsState);
+  const allEls = Array.from(new Set([...Object.keys(rCounts), ...Object.keys(pCounts)])).sort();
+
+  const setCoef = (side, idx, delta) => {
+    setCoefs(c => ({
+      ...c,
+      [side]: c[side].map((v, i) => i === idx ? Math.max(1, Math.min(20, v + delta)) : v),
+    }));
+  };
+
+  const submit = () => {
+    setAttempts(a => a + 1);
+    setAttackTier(Math.min(streak, 7));
+    const correctCoefs = coefs.r.every((v, i) => v === q.r[i].c) && coefs.p.every((v, i) => v === q.p[i].c);
+    if (balanced && correctCoefs) {
+      let pts = 150 + streak * 10 - attempts * 20;
+      pts = Math.max(50, pts);
+      setScore(s => s + pts);
+      setStreak(s => s + 1);
+      setFeedback({ type: 'correct', pts });
+    } else if (balanced) {
+      // Balanced but maybe with multiples — accept if minimally balanced
+      let pts = 100 + streak * 10 - attempts * 20;
+      pts = Math.max(40, pts);
+      setScore(s => s + pts);
+      setStreak(s => s + 1);
+      setFeedback({ type: 'correct', pts, note: 'Balanced (try lowest whole numbers next time).' });
+    } else {
+      setLives(l => l - 1);
+      setStreak(0);
+      setFeedback({ type: 'wrong' });
+    }
+  };
+
+  const next = () => {
+    if (lives <= 0) { onWin({ won: false, score, streak }); return; }
+    if (qi + 1 >= questions.length) {
+      onWin({ won: true, score, streak });
+    } else {
+      setQi(qi + 1);
+    }
+  };
+
+  const showHints = char.charClass === 'strategist';
+
+  const renderMolecules = (side, list, sideKey) => (
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+      {list.map((m, i) => (
+        <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <span style={{ fontFamily: PIX_FONT, fontSize: 14, color: PALETTE.yellow, minWidth: 18, textAlign: 'right' }}>
+              {coefs[sideKey][i]}
+            </span>
+            <span style={{ fontFamily: PIX_FONT, fontSize: 14, color: PALETTE.ink }}>{m.f}</span>
           </div>
-          <div id="missionList" class="mission-list"></div>
-        </section>
-
-        <section class="side-section compact">
-          <h2>Balancing Rules</h2>
-          <ul class="rule-list">
-            <li>Change coefficients only. Never change subscripts.</li>
-            <li>Count every atom on both sides of the arrow.</li>
-            <li>Use the smallest whole-number ratio.</li>
-            <li>Polyatomic ions can be balanced as a group if they stay together.</li>
-          </ul>
-        </section>
-
-        <section class="side-section compact">
-          <h2>Achievements</h2>
-          <div class="badges">
-            <span id="badgeFirst" class="badge">First balance</span>
-            <span id="badgeStreak" class="badge">3-streak</span>
-            <span id="badgeMaster" class="badge">Quest complete</span>
+          <div style={{ display: 'flex', gap: 2 }}>
+            <button onClick={() => setCoef(sideKey, i, -1)} disabled={!!feedback}
+              style={{ padding: '2px 6px', fontFamily: PIX_FONT, fontSize: 10, background: PALETTE.dim, color: PALETTE.ink, border: `2px solid ${PALETTE.bg}`, cursor: 'pointer' }}>−</button>
+            <button onClick={() => setCoef(sideKey, i, 1)} disabled={!!feedback}
+              style={{ padding: '2px 6px', fontFamily: PIX_FONT, fontSize: 10, background: PALETTE.green, color: PALETTE.bg, border: `2px solid ${PALETTE.bg}`, cursor: 'pointer' }}>+</button>
           </div>
-        </section>
-      </aside>
-    </main>
+          {i < list.length - 1 && <span style={{ position: 'absolute', display: 'none' }}>+</span>}
+        </div>
+      )).reduce((prev, curr, i) => i === 0 ? [curr] : [...prev, <span key={'p' + i} style={{ fontFamily: PIX_FONT, fontSize: 16, color: PALETTE.cyan }}>+</span>, curr], [])}
+    </div>
+  );
 
-    <script src="app.js"></script>
-  </body>
+  return (
+    <div style={{ minHeight: '100vh', padding: 10, paddingBottom: 80 }}>
+      <GameHud char={char} lives={lives} maxLives={startLives} score={score} streak={streak}
+        onQuit={() => onWin({ won: false, score, streak, quit: true })}
+        onRef={() => setRefOpen(true)} />
+
+      <PixelPanel style={{ marginBottom: 10, background: PALETTE.bg2 }}>
+        <div style={{ fontSize: 9, color: PALETTE.cyan, marginBottom: 8 }}>
+          Q{qi + 1}/{questions.length} · ⚖️ BALANCE THE EQUATION
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          {renderMolecules('reactants', reactantsState, 'r')}
+          <div style={{ textAlign: 'center', fontFamily: PIX_FONT, fontSize: 18, color: PALETTE.pink, margin: '8px 0' }}>→</div>
+          {renderMolecules('products', productsState, 'p')}
+        </div>
+
+        {/* Atom counter */}
+        <div style={{ background: PALETTE.bg, padding: 8, border: `2px solid ${PALETTE.cyan}` }}>
+          <div style={{ fontSize: 8, color: PALETTE.cyan, marginBottom: 6 }}>ATOM COUNTER</div>
+          <table style={{ width: '100%', fontFamily: PIX_FONT, fontSize: 9 }}>
+            <thead><tr style={{ color: PALETTE.dim }}><th></th><th>L</th><th>R</th></tr></thead>
+            <tbody>
+              {allEls.map(el => {
+                const l = rCounts[el] || 0, r = pCounts[el] || 0;
+                const eq = l === r;
+                let cellColor = PALETTE.ink;
+                if (showHints && !eq) cellColor = l < r ? PALETTE.red : PALETTE.cyan;
+                return (
+                  <tr key={el} style={{ color: eq ? PALETTE.green : cellColor }}>
+                    <td style={{ padding: '2px 6px' }}>{el}</td>
+                    <td style={{ padding: '2px 6px', textAlign: 'center' }}>{l}</td>
+                    <td style={{ padding: '2px 6px', textAlign: 'center' }}>{r} {eq ? '✓' : '✗'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {balanced && <div style={{ marginTop: 6, color: PALETTE.green, fontFamily: PIX_FONT, fontSize: 10, textAlign: 'center' }}>✓ BALANCED</div>}
+        </div>
+      </PixelPanel>
+
+      {!feedback && (
+        <PixelButton onClick={submit} color={balanced ? PALETTE.green : PALETTE.pink} full>Submit</PixelButton>
+      )}
+
+      {feedback && (
+        <PixelPanel style={{ background: feedback.type === 'correct' ? PALETTE.green : PALETTE.red,
+          color: PALETTE.bg, marginTop: 10, textAlign: 'center' }}>
+          <div style={{ fontSize: 16, marginBottom: 8 }}>{feedback.type === 'correct' ? `✓ +${feedback.pts}` : '✗ NOT BALANCED'}</div>
+          {feedback.note && <div style={{ fontSize: 8, marginBottom: 6 }}>{feedback.note}</div>}
+          <div style={{ fontSize: 9 }}>
+            Lowest answer: {q.r.map(m => `${m.c === 1 ? '' : m.c}${m.f}`).join(' + ')} → {q.p.map(m => `${m.c === 1 ? '' : m.c}${m.f}`).join(' + ')}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <PixelButton onClick={next} color={PALETTE.bg} small style={{ background: PALETTE.bg, color: PALETTE.ink }}>
+              {qi + 1 >= questions.length || lives === 0 ? 'Finish' : 'Next ▶'}
+            </PixelButton>
+          </div>
+        </PixelPanel>
+      )}
+
+      <BattleScene char={char} phase={arenaPhase} monster={monster} attackTier={attackTier} accentColor={PALETTE.pink} />
+    </div>
+  );
+}
+
+// =================== RESULT SCREEN ===================
+const ENCOURAGE = [
+  "Stoichiometry's in your blood!",
+  "Mendeleev would be proud.",
+  "Beakers bow to you.",
+  "The lab notebook trembles in respect.",
+  "Even atoms can't slow you down.",
+];
+const COMFORT = [
+  "Marie Curie failed plenty too. Try again!",
+  "Even atoms split sometimes. Reset!",
+  "The periodic table is patient. So am I.",
+  "One more shot — you're closer than you think.",
+];
+
+function ResultScreen({ result, char, world, level, onMap, onRetry }) {
+  const stars = result.won ? (result.score >= 600 ? 3 : result.score >= 350 ? 2 : 1) : 0;
+  const isWin = result.won;
+  const msg = isWin ? ENCOURAGE[Math.floor(Math.random() * ENCOURAGE.length)]
+                    : COMFORT[Math.floor(Math.random() * COMFORT.length)];
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', padding: 16, gap: 16 }}>
+      <NeonText color={isWin ? PALETTE.yellow : PALETTE.red} size={24}>
+        {isWin ? 'STAGE CLEAR!' : 'GAME OVER'}
+      </NeonText>
+
+      {isWin && (
+        <div style={{ display: 'flex', gap: 8 }}>
+          {[1, 2, 3].map(i => (
+            <span key={i} style={{ fontSize: 48, filter: stars >= i ? 'drop-shadow(0 0 12px gold)' : 'grayscale(1) opacity(0.3)' }}>⭐</span>
+          ))}
+        </div>
+      )}
+
+      <Sprite char={char} expression={isWin ? 'thrilled' : 'sad'} size={140} />
+
+      <SpeechBubble char={char} text={msg} />
+
+      <PixelPanel style={{ width: '100%', maxWidth: 320, textAlign: 'center' }}>
+        <div style={{ fontSize: 11, color: PALETTE.yellow, marginBottom: 8 }}>SCORE: {result.score}</div>
+        <div style={{ fontSize: 9, color: PALETTE.cyan }}>BEST STREAK: {result.streak}🔥</div>
+      </PixelPanel>
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <PixelButton onClick={onRetry} color={PALETTE.pink}>↻ Retry</PixelButton>
+        <PixelButton onClick={onMap} color={PALETTE.green}>World Map ▶</PixelButton>
+      </div>
+    </div>
+  );
+}
+
+// =================== MAIN APP ===================
+const SAVE_KEY = 'chemquest:save:v1';
+
+const initialSave = () => ({
+  character: null,
+  progress: {
+    ionic: [0, 0, 0],
+    covalent: [0, 0],
+    equation: [0, 0, 0, 0, 0],
+  },
+  stats: { totalScore: 0, bestStreak: 0, levelsCompleted: 0 },
+});
+
+function ChemQuest() {
+  const [save, setSave] = useState(initialSave());
+  const [loaded, setLoaded] = useState(false);
+  const [hasSave, setHasSave] = useState(false);
+  const [screen, setScreen] = useState('title'); // title, create, map, play, result
+  const [playState, setPlayState] = useState(null); // { world, level }
+  const [result, setResult] = useState(null);
+  const [refOpen, setRefOpen] = useState(false);
+
+  // Load save
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await window.storage.get(SAVE_KEY);
+        if (r && r.value) {
+          const data = JSON.parse(r.value);
+          setSave(data);
+          setHasSave(!!data.character);
+        }
+      } catch (e) { /* no save */ }
+      setLoaded(true);
+    })();
+  }, []);
+
+  // Persist save
+  const persist = useCallback(async (newSave) => {
+    setSave(newSave);
+    setHasSave(!!newSave.character);
+    try {
+      await window.storage.set(SAVE_KEY, JSON.stringify(newSave));
+    } catch (e) {
+      console.error('Save failed', e);
+    }
+  }, []);
+
+  const startNew = () => setScreen('create');
+
+  const continueGame = () => setScreen('map');
+
+  const wipe = async () => {
+    try { await window.storage.delete(SAVE_KEY); } catch(e) {}
+    setSave(initialSave());
+    setHasSave(false);
+  };
+
+  const onCharacterDone = async (char) => {
+    const ns = { ...initialSave(), character: char };
+    await persist(ns);
+    setScreen('map');
+  };
+
+  const startLevel = (worldId, levelIdx) => {
+    setPlayState({ world: worldId, level: levelIdx });
+    setRefOpen(false);
+    setScreen('play');
+  };
+
+  const onLevelEnd = async (res) => {
+    setResult(res);
+    if (res.won && !res.quit) {
+      const stars = res.score >= 600 ? 3 : res.score >= 350 ? 2 : 1;
+      const updatedProgress = { ...save.progress };
+      const arr = [...updatedProgress[playState.world]];
+      arr[playState.level] = Math.max(arr[playState.level], stars);
+      updatedProgress[playState.world] = arr;
+      const ns = {
+        ...save,
+        progress: updatedProgress,
+        stats: {
+          ...save.stats,
+          totalScore: save.stats.totalScore + res.score,
+          bestStreak: Math.max(save.stats.bestStreak, res.streak),
+          levelsCompleted: save.stats.levelsCompleted + (save.progress[playState.world][playState.level] === 0 ? 1 : 0),
+        },
+      };
+      await persist(ns);
+    }
+    if (res.quit) {
+      setScreen('map');
+    } else {
+      setScreen('result');
+    }
+  };
+
+  const retryLevel = () => {
+    setRefOpen(false);
+    setScreen('play');
+  };
+
+  if (!loaded) {
+    return (
+      <div style={{ minHeight: '100vh', background: PALETTE.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <NeonText color={PALETTE.cyan} size={14}>LOADING…</NeonText>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ background: PALETTE.bg, minHeight: '100vh', position: 'relative',
+      backgroundImage: `radial-gradient(circle at 20% 20%, rgba(157,62,255,.3) 0, transparent 40%),
+                        radial-gradient(circle at 80% 80%, rgba(62,240,255,.2) 0, transparent 40%)` }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        body { margin: 0; }
+        sub, sup { font-size: 0.6em; }
+        @keyframes walkBounce {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-3px); }
+        }
+        @keyframes walkIn {
+          0% { transform: translateX(-160px); opacity: 0; }
+          100% { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes walkAway {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(360px); opacity: 0.7; }
+        }
+        @keyframes attackLunge {
+          0% { transform: translateX(0); }
+          30% { transform: translateX(120px) translateY(-4px); }
+          60% { transform: translateX(120px); }
+          100% { transform: translateX(0); }
+        }
+        @keyframes hurtBounce {
+          0% { transform: translateX(0); }
+          15% { transform: translateX(40px) rotate(-3deg); }
+          35% { transform: translateX(-25px) rotate(-10deg); }
+          55% { transform: translateX(-15px) rotate(-5deg); }
+          75% { transform: translateX(-25px) rotate(-8deg); }
+          100% { transform: translateX(0) rotate(0); }
+        }
+        @keyframes monsterFloat {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-5px); }
+        }
+        @keyframes monsterShake {
+          0%, 100% { transform: translateX(0); }
+          25% { transform: translateX(-5px); }
+          75% { transform: translateX(5px); }
+        }
+        @keyframes monsterDestroy {
+          0% { transform: scale(1) rotate(0); opacity: 1; }
+          40% { transform: scale(1.4) rotate(15deg); }
+          100% { transform: scale(0) rotate(180deg); opacity: 0; }
+        }
+        @keyframes slashEffect {
+          0% { transform: rotate(-25deg) scaleX(0); opacity: 0; }
+          25% { transform: rotate(-25deg) scaleX(1); opacity: 1; }
+          75% { transform: rotate(-25deg) scaleX(1); opacity: 1; }
+          100% { transform: rotate(-25deg) scaleX(1.1); opacity: 0; }
+        }
+        @keyframes particleBurst {
+          0% { transform: rotate(var(--deg)) translateX(0); opacity: 1; }
+          100% { transform: rotate(var(--deg)) translateX(60px); opacity: 0; }
+        }
+        @keyframes fireballFly {
+          0% { transform: translateX(0) scale(0.6); opacity: 0.8; }
+          50% { transform: translateX(120px) scale(1.1); opacity: 1; }
+          90% { transform: translateX(220px) scale(1.4); opacity: 1; }
+          100% { transform: translateX(240px) scale(0.2); opacity: 0; }
+        }
+        @keyframes beamPulse {
+          0% { transform: scaleX(0); opacity: 0; }
+          15% { transform: scaleX(1); opacity: 1; }
+          30%, 70% { transform: scaleX(1) scaleY(1.2); opacity: 1; }
+          85% { transform: scaleX(1); opacity: 1; }
+          100% { transform: scaleX(1); opacity: 0; }
+        }
+        @keyframes superFireSpin {
+          from { transform: rotate(0) translateX(26px); }
+          to { transform: rotate(360deg) translateX(26px); }
+        }
+        @keyframes meteorFall {
+          0% { transform: translateY(-20px) translateX(0) rotate(0); opacity: 1; }
+          85% { transform: translateY(140px) translateX(-20px) rotate(45deg); opacity: 1; }
+          100% { transform: translateY(150px) translateX(-20px) rotate(60deg); opacity: 0; }
+        }
+        @keyframes shockwave {
+          0% { transform: scale(0); opacity: 1; }
+          100% { transform: scale(2.5); opacity: 0; }
+        }
+        @keyframes teleportOut {
+          0% { transform: scale(1); opacity: 1; filter: brightness(1); }
+          50% { transform: scale(1.1); opacity: 0.7; filter: brightness(3) blur(2px); }
+          100% { transform: scale(0.3); opacity: 0; filter: brightness(5) blur(4px); }
+        }
+        @keyframes screenShake {
+          0%, 100% { transform: translate(0, 0); }
+          25% { transform: translate(-3px, 2px); }
+          50% { transform: translate(2px, -2px); }
+          75% { transform: translate(-2px, -1px); }
+        }
+        @keyframes streakFlash {
+          0%, 100% { opacity: 0; transform: scaleX(0); }
+          50% { opacity: 0.8; transform: scaleX(1); }
+        }
+        @keyframes swordSheath {
+          0% { transform: translateX(-30px) rotate(15deg); opacity: 1; }
+          70% { transform: translateX(0) rotate(0); opacity: 1; }
+          100% { transform: translateX(20px) rotate(-10deg); opacity: 0; }
+        }
+        @keyframes cutFly {
+          0% { transform: translate(0, 0) rotate(0); opacity: 1; }
+          100% { transform: translate(var(--dx), var(--dy)) rotate(var(--rot)); opacity: 0; }
+        }
+        @keyframes cutLineFlash {
+          0% { opacity: 0; }
+          30%, 70% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes ultimateLabel {
+          0% { transform: translateX(-50%) scale(0); opacity: 0; }
+          50% { transform: translateX(-50%) scale(1.3); opacity: 1; }
+          100% { transform: translateX(-50%) scale(1); opacity: 1; }
+        }
+      `}</style>
+
+      {screen === 'title' && (
+        <TitleScreen hasSave={hasSave} onContinue={continueGame} onNew={startNew} onWipe={wipe} />
+      )}
+      {screen === 'create' && (
+        <CharacterCreation onDone={onCharacterDone} />
+      )}
+      {screen === 'map' && save.character && (
+        <WorldMap save={save} onPlay={startLevel} onTitle={() => setScreen('title')} />
+      )}
+      {screen === 'play' && playState && save.character && (
+        <>
+          {playState.world === 'ionic' && (
+            <IonicGame char={save.character} level={playState.level} onWin={onLevelEnd} setRefOpen={setRefOpen} refOpen={refOpen} />
+          )}
+          {playState.world === 'covalent' && (
+            <CovalentGame char={save.character} level={playState.level} onWin={onLevelEnd} setRefOpen={setRefOpen} />
+          )}
+          {playState.world === 'equation' && (
+            <EquationGame char={save.character} level={playState.level} onWin={onLevelEnd} setRefOpen={setRefOpen} />
+          )}
+        </>
+      )}
+      {screen === 'result' && result && save.character && playState && (
+        <ResultScreen result={result} char={save.character} world={playState.world} level={playState.level}
+          onMap={() => setScreen('map')} onRetry={retryLevel} />
+      )}
+
+      <ReferenceSidebar open={refOpen} onClose={() => setRefOpen(false)} />
+    </div>
+  );
+}
+
+
+// Mount
+const loader = document.getElementById('loader');
+if (loader) loader.remove();
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<ChemQuest />);
+</script>
+</body>
 </html>
